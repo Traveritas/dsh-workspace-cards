@@ -1,0 +1,52 @@
+{
+  "name": "dsh-workspace-cards",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 侧栏工作区卡片：图标网格，点卡片原地展开会话面板",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "workspace",
+    "sidebar",
+    "workspace-cards"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Traveritas/dsh-workspace-cards.git"
+  },
+  "homepage": "https://github.com/Traveritas/dsh-workspace-cards#readme",
+  "bugs": {
+    "url": "https://github.com/Traveritas/dsh-workspace-cards/issues"
+  }
+}

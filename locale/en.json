@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Workspace Cards",
+    "description": "Turns the sidebar workspace list into an icon grid; clicking a card opens an overlay session drawer. Icons, colors, and name visibility are adjustable."
+  }
+}
