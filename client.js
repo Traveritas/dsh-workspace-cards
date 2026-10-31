@@ -1890,13 +1890,8 @@ window.__ModuleLoader__.load({
         }
       }, [showToast, t]);
 
-      /* 收起常驻卡片：所有工作区都回到网格里，状态存盘，下次进来还是收起的 */
-      const closeCard = useCallback(() => {
-        setPanelMode('sessions');
-        patchStore({ pinnedOpen: false });
-      }, [patchStore]);
-
-      /* 点卡片 = 把这张提到常驻位；再点同一个 = 收起来。卡片自己就是开关。 */
+      /* 点卡片 = 把这张提到常驻位；再点同一个 = 收起来。卡片自己就是开关，
+         不再提供 Esc / 标题行之类的第二个收起入口——Esc 留给弹层，撞车过。 */
       const focusCard = useCallback((workspaceId) => {
         setPanelMode('sessions');
         if (pinnedOpen && pinnedId === workspaceId) {
@@ -1932,12 +1927,11 @@ window.__ModuleLoader__.load({
           if (event.key !== 'Escape') return;
           if (menu) { setMenu(null); return; }
           if (searchOpen) { setSearchOpen(false); setQuery(''); return; }
-          if (pinnedWs && panelMode !== 'sessions') { setPanelMode('sessions'); return; }
-          if (pinnedWs) closeCard();
+          if (pinnedWs && panelMode !== 'sessions') { setPanelMode('sessions'); }
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-      }, [menu, searchOpen, pinnedWs, panelMode, closeCard]);
+      }, [menu, searchOpen, pinnedWs, panelMode]);
 
       useEffect(() => {
         if (!searchOpen) return undefined;
