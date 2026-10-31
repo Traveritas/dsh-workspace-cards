@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
 
     const PLUGIN_ID = 'dsh-workspace-cards';
     /* 样式接口版本：皮肤插件用 html[data-dwc-api] 门控，接口不兼容时整段不生效 */
-    const PLUGIN_VERSION = '0.3.0';
+    const PLUGIN_VERSION = '0.4.0';
     const SKIN_API = '1';
     const STORE_KEY = 'dsh.workspaceCards.v1';
     /* v1 → v2：名称默认改「仅悬停」；v2 → v3：圆角从像素改成占边长的百分比。 */
@@ -26,6 +26,10 @@ window.__ModuleLoader__.load({
     const ICON_POLL_MS = 2000;
     const SERIF = '"Source Serif 4", "Songti SC", "Noto Serif SC", serif';
     const NOOP_HOOK = () => undefined;
+    /* 收起动画是位移，减动效时直接卸载，别让抽屉停在原地再凭空消失 */
+    const REDUCED_MOTION = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     /* ────────────────────────── 文案 ────────────────────────── */
 
@@ -38,6 +42,11 @@ window.__ModuleLoader__.load({
       more: '更多',
       collapse: '收起',
       resize: '调整常驻卡片高度',
+      showCards: '展开工作区卡片',
+      viewMode: '视口',
+      viewWorkspace: '工作区优先',
+      viewSessions: '会话栏优先',
+      viewHint: '工作区优先：卡片常驻；会话栏优先：会话铺满',
       newSession: '新会话',
       names: '名称',
       namesShow: '常显',
@@ -119,6 +128,11 @@ window.__ModuleLoader__.load({
       more: 'More',
       collapse: 'Collapse',
       resize: 'Resize pinned card',
+      showCards: 'Show workspace cards',
+      viewMode: 'Layout',
+      viewWorkspace: 'Workspaces first',
+      viewSessions: 'Sessions first',
+      viewHint: 'Workspaces first: cards stay; Sessions first: sessions fill.',
       newSession: 'New session',
       names: 'Names',
       namesShow: 'Always',
@@ -268,6 +282,11 @@ window.__ModuleLoader__.load({
 
     /* 面板上外边距 2 + 分隔条 12 + 网格上内边距 4：下拖到底时网格正好剩一行完整卡片 */
     const GRID_RESERVE = 18;
+    /* 分隔条高度：工作区优先 12px；会话栏优先长成 32px 的整条按钮 */
+    const SPLIT_H = 12;
+    const GRIP_H = 32;
+    /* 卡片抽屉收起动画时长；卸载比动画多留 20ms，免得最后一帧被切掉 */
+    const DRAWER_OUT_MS = 180;
 
     const DEFAULT_STORE = {
       icons: {},
@@ -283,6 +302,8 @@ window.__ModuleLoader__.load({
       /* 常驻卡片（当前工作区）开着还是收起；收起后所有卡片都回网格 */
       pinnedOpen: true,
       pinnedHeight: LIMITS.pinnedHeight.def,
+      /* 视口：工作区优先（卡片常驻、会话浮窗）/ 会话栏优先（会话铺满、卡片收进底部按钮） */
+      view: 'workspace',
     };
 
     function clampNumber(raw, limit) {
@@ -313,6 +334,7 @@ window.__ModuleLoader__.load({
         iconSize: clampNumber(src.iconSize, LIMITS.iconSize),
         pinnedOpen: src.pinnedOpen !== false,
         pinnedHeight: clampNumber(src.pinnedHeight, LIMITS.pinnedHeight),
+        view: src.view === 'sessions' ? 'sessions' : 'workspace',
       };
     }
 
@@ -365,6 +387,7 @@ window.__ModuleLoader__.load({
           archived: value.archived,
           pinnedOpen: value.pinnedOpen !== false,
           pinnedHeight: value.pinnedHeight,
+          view: value.view === 'sessions' ? 'sessions' : 'workspace',
         }));
       } catch (error) {
         /* 隐私模式下 localStorage 不可写，退化成内存态即可 */
@@ -503,6 +526,9 @@ window.__ModuleLoader__.load({
       addFolder: ['M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z', 'M12 11v6', 'M9 14h6'],
       back: ['m14 6-6 6 6 6'],
       more: ['M6 12h.01', 'M12 12h.01', 'M18 12h.01'],
+      chevronDown: ['m6 10 6 6 6-6'],
+      chevronUp: ['m6 14 6-6 6 6'],
+      grid: ['M4 4h6v6H4Z', 'M14 4h6v6h-6Z', 'M4 14h6v6H4Z', 'M14 14h6v6h-6Z'],
       close: ['M6 6l12 12', 'M18 6 6 18'],
       check: ['m5 12 4 4 10-10'],
       collapse: ['m6 14 6-6 6 6'],
@@ -811,13 +837,25 @@ window.__ModuleLoader__.load({
 .dwc-split {
   position: relative;
   flex: 0 0 auto;
-  height: 12px;
+  height: var(--dwc-split-h, 12px);
   margin: 0 2px;
   cursor: row-resize;
   touch-action: none;
   z-index: 2;
   transition: height 180ms cubic-bezier(.2, .8, .2, 1);
 }
+/* 会话栏优先：会话栏变成贴边的底层（不再是浮动卡片），卡片抽屉才是浮层；
+   底部分隔条不再调高度，长成 32px 的整条按钮，点开卡片抽屉 */
+.dwc-root.is-focus .dwc-panel {
+  max-height: 100%;
+  margin: 0;
+  border-width: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.dwc-root.is-focus .dwc-panel-header { border-radius: 0; }
+.dwc-split.dwc-handle::after { display: none; }
 .dwc-root.is-panel-closed .dwc-split {
   height: 0;
   pointer-events: none;
@@ -842,6 +880,84 @@ window.__ModuleLoader__.load({
 .dwc-split.is-active::after { opacity: 1; }
 .dwc-split:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; border-radius: 6px; }
 .dwc-root.is-splitting { cursor: row-resize; user-select: none; }
+
+/* 切视口：面板 / 分隔条直接落到目标尺寸，不播过渡 */
+.dwc-root.is-view-switch .dwc-panel,
+.dwc-root.is-view-switch .dwc-split { transition: none; }
+
+/* 会话栏优先的底部按钮：整条 32px 都能点，点开卡片抽屉；和抽屉顶栏同一套语言 */
+.dwc-split.dwc-handle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 8px 0 12px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.dwc-split.dwc-handle:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dwc-split.dwc-handle[aria-expanded="true"] { background: var(--dsw-alias-bg-layer-1); }
+.dwc-handle-label {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dwc-handle-chevron { flex: 0 0 auto; display: inline-flex; color: var(--dsw-alias-label-tertiary); }
+.dwc-split.dwc-handle:hover .dwc-handle-chevron { color: var(--dsw-alias-label-primary); }
+
+/* 卡片抽屉：浮在会话栏上方，点卡片跳会话后收起 */
+.dwc-drawer-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 2px var(--dwc-split-h, 12px);
+  /* 层本身不吃事件：底部留白要让得开，按钮才点得到 */
+  pointer-events: none;
+}
+.dwc-drawer-scrim { position: absolute; inset: 0 0 var(--dwc-split-h, 12px) 0; pointer-events: auto; }
+.dwc-drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(72%, 420px);
+  border-radius: var(--dwc-panel-radius, 16px);
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-3);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: var(--dsw-shadow-lv2);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: dwc-drawer-in 180ms cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes dwc-drawer-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+/* 收起：先下滑淡出，再由 React 卸载（见 DRAWER_OUT_MS） */
+.dwc-drawer.is-closing { animation: dwc-drawer-out 160ms cubic-bezier(.4, 0, .2, 1) both; }
+@keyframes dwc-drawer-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(18px); }
+}
+.dwc-drawer-layer.is-closing,
+.dwc-drawer-layer.is-closing .dwc-drawer,
+.dwc-drawer-layer.is-closing .dwc-drawer-scrim { pointer-events: none; }
+.dwc-drawer:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; }
+.dwc-drawer .dwc-grid { flex: 1 1 auto; min-height: 0; padding: 10px 8px; }
 
 .dwc-badge[data-kind="pending"] { background: var(--dwc-badge-pending, var(--dsw-alias-state-warn-primary)); }
 .dwc-badge[data-kind="running"] { background: var(--dwc-badge-running, var(--dsw-alias-state-business-primary)); animation: dwc-pulse 1.7s ease-in-out infinite; }
@@ -899,6 +1015,19 @@ window.__ModuleLoader__.load({
 .dwc-panel-head.is-static { cursor: default; }
 .dwc-panel-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 .dwc-panel-head-icon { flex: 0 0 auto; display: flex; width: 20px; height: 20px; align-items: center; justify-content: center; color: var(--dsw-alias-label-secondary); }
+/* 左上角图标就是收起开关；标题行仍不可点（0.3.0 整行可点撞过车） */
+.dwc-panel-head-icon.dwc-panel-collapse {
+  width: 26px;
+  height: 26px;
+  margin-left: -3px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.dwc-panel-collapse:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dwc-panel-collapse:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 1px; }
 .dwc-scrolltext { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dwc-scrolltext-inner { display: inline-block; white-space: nowrap; transition-property: transform; transition-timing-function: linear; }
 
@@ -997,6 +1126,7 @@ window.__ModuleLoader__.load({
 }
 .dwc-mgroup + .dwc-mgroup { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .dwc-mlabel { padding: 4px 8px 2px; font-size: 11px; color: var(--dsw-alias-label-caption); }
+.dwc-mhint { padding: 0 8px 4px; font-size: 10px; line-height: 1.5; color: var(--dsw-alias-label-caption); }
 .dwc-mi {
   display: flex;
   align-items: center;
@@ -1183,7 +1313,7 @@ window.__ModuleLoader__.load({
 .dwc-set-btn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 
 @media (prefers-reduced-motion: reduce) {
-  .dwc-grid, .dwc-sr, .dwc-badge[data-kind="running"], .dwc-dot[data-kind="running"] i { animation: none; }
+  .dwc-grid, .dwc-sr, .dwc-drawer, .dwc-drawer.is-closing, .dwc-badge[data-kind="running"], .dwc-dot[data-kind="running"] i { animation: none; }
   .dwc-panel, .dwc-split, .dwc-tile, .dwc-tile-icon { transition: none; }
 }
 `;
@@ -1618,8 +1748,17 @@ window.__ModuleLoader__.load({
       const [hoverTile, setHoverTile] = useState(null);
       const [splitDrag, setSplitDrag] = useState(false);
       const [splitLive, setSplitLive] = useState(null);
+      /* 会话栏优先：底部按钮点开的卡片抽屉 */
+      const [drawer, setDrawer] = useState(false);
+      const [drawerClosing, setDrawerClosing] = useState(false);
+      const [viewSwitch, setViewSwitch] = useState(false);
+      const [stageH, setStageH] = useState(0);
       const rootRef = useRef(null);
       const gridRef = useRef(null);
+      const stageRef = useRef(null);
+      const splitRef = useRef(null);
+      const drawerRef = useRef(null);
+      const drawerTimer = useRef(0);
       const splitDragRef = useRef(null);
       const splitLiveRef = useRef(null);
 
@@ -1717,6 +1856,9 @@ window.__ModuleLoader__.load({
 
       const pinnedId = focusId || currentWsId || lastWsId;
       const pinnedOpen = store.pinnedOpen !== false;
+      /* 两种视口：工作区优先 = 卡片常驻、会话浮窗；会话栏优先 = 会话铺满、卡片在底部抽屉 */
+      const focus = store.view === 'sessions';
+      const panelOpen = focus || pinnedOpen;
 
       useEffect(() => { setPanelMode('sessions'); }, [pinnedId]);
 
@@ -1798,20 +1940,39 @@ window.__ModuleLoader__.load({
       /* 谁在上面：只要还认得出这个工作区就挂着（收起来也要留着，动效才有得放）；
          pinnedWs 才是「现在开着」，收起后为 null */
       const pinnedTarget = pinnedId ? wsById.get(pinnedId) || null : null;
-      const pinnedWs = pinnedOpen ? pinnedTarget : null;
+      const pinnedWs = panelOpen ? pinnedTarget : null;
 
       /* 面板骨架要一直挂着，展开才有得动画；会话列表不必——
          收起动画跑完（160ms）再卸载，常驻 DOM 就只剩标题行那几个节点 */
-      const [bodyAlive, setBodyAlive] = useState(pinnedOpen);
+      const [bodyAlive, setBodyAlive] = useState(panelOpen);
       useEffect(() => {
-        if (pinnedOpen) { setBodyAlive(true); return undefined; }
+        if (panelOpen) { setBodyAlive(true); return undefined; }
         if (!bodyAlive) return undefined;
         const timer = setTimeout(() => setBodyAlive(false), 200);
         return () => clearTimeout(timer);
-      }, [pinnedOpen, bodyAlive]);
+      }, [panelOpen, bodyAlive]);
+
+      /* 会话栏优先的面板高度 = 舞台 - 底部按钮；舞台高度跟着侧栏宽度 / 窗口走 */
+      useLayoutEffect(() => {
+        const node = stageRef.current;
+        if (!node) return undefined;
+        const sync = () => {
+          const next = node.clientHeight;
+          setStageH((prev) => (Math.abs(prev - next) > 0.5 ? next : prev));
+        };
+        sync();
+        if (typeof ResizeObserver === 'undefined') return undefined;
+        const observer = new ResizeObserver(sync);
+        observer.observe(node);
+        return () => observer.disconnect();
+      }, [wide]);
+
+      const splitH = focus ? GRIP_H : SPLIT_H;
+      /* 会话栏优先时面板贴边（没有 2px 上外边距），高度正好是舞台减去底部按钮 */
+      const fullH = Math.max(LIMITS.pinnedHeight.min, Math.round(stageH - splitH));
 
       /* 拖动时用本地值，松手才落盘——否则每个 pointermove 都写一次 localStorage */
-      const pinnedHeight = splitLive !== null ? splitLive : store.pinnedHeight;
+      const pinnedHeight = focus ? fullH : (splitLive !== null ? splitLive : store.pinnedHeight);
       const cardSize = store.cardSize;
 
       /* 网格能否再往上 / 往下滚：顶到底时对应那条渐隐就收掉 */
@@ -1829,7 +1990,7 @@ window.__ModuleLoader__.load({
 
       useLayoutEffect(() => {
         syncScrollEdge();
-      }, [syncScrollEdge, pinnedHeight, store.cardSize, cards.length, searchOpen]);
+      }, [syncScrollEdge, pinnedHeight, store.cardSize, cards.length, searchOpen, drawer, focus]);
 
       useEffect(() => {
         const el = gridRef.current;
@@ -1837,7 +1998,7 @@ window.__ModuleLoader__.load({
         const observer = new ResizeObserver(syncScrollEdge);
         observer.observe(el);
         return () => observer.disconnect();
-      }, [syncScrollEdge, searchOpen]);
+      }, [syncScrollEdge, searchOpen, drawer, focus]);
 
       const beginSplit = useCallback((event) => {
         if (event.button !== 0) return;
@@ -1879,6 +2040,62 @@ window.__ModuleLoader__.load({
         };
       }, [splitDrag, patchStore]);
 
+      /* 抽屉开合：收起先播 160ms 下滑淡出再卸载；打开 / 再点会打断收起 */
+      const hideDrawer = useCallback(() => {
+        clearTimeout(drawerTimer.current);
+        drawerTimer.current = 0;
+        setDrawer(false);
+        setDrawerClosing(false);
+      }, []);
+
+      const openDrawer = useCallback(() => {
+        clearTimeout(drawerTimer.current);
+        drawerTimer.current = 0;
+        setDrawerClosing(false);
+        setDrawer(true);
+      }, []);
+
+      const focusHandle = useCallback(() => {
+        const node = splitRef.current;
+        if (node && typeof node.focus === 'function') node.focus({ preventScroll: true });
+      }, []);
+
+      const closeDrawer = useCallback(() => {
+        if (!drawer || drawerClosing) return;
+        clearTimeout(drawerTimer.current);
+        drawerTimer.current = 0;
+        if (REDUCED_MOTION) {
+          setDrawer(false);
+          focusHandle();
+          return;
+        }
+        setDrawerClosing(true);
+        drawerTimer.current = setTimeout(() => {
+          drawerTimer.current = 0;
+          setDrawer(false);
+          setDrawerClosing(false);
+          focusHandle();
+        }, DRAWER_OUT_MS);
+      }, [drawer, drawerClosing, focusHandle]);
+
+      const toggleDrawer = useCallback(() => {
+        if (drawer && !drawerClosing) closeDrawer();
+        else openDrawer();
+      }, [drawer, drawerClosing, closeDrawer, openDrawer]);
+
+      useEffect(() => () => clearTimeout(drawerTimer.current), []);
+
+      /* 抽屉只在会话栏优先里存在：切回工作区优先时顺手收掉 */
+      useEffect(() => {
+        if (!focus) hideDrawer();
+      }, [focus, hideDrawer]);
+
+      useEffect(() => {
+        if (!drawer) return;
+        const node = drawerRef.current;
+        if (node && typeof node.focus === 'function') node.focus({ preventScroll: true });
+      }, [drawer]);
+
       const showToast = useCallback((text) => setToast(text), []);
 
       const run = useCallback(async (operation, fallback) => {
@@ -1903,10 +2120,11 @@ window.__ModuleLoader__.load({
       }, [patchStore, pinnedOpen, pinnedId]);
 
       const openSearch = useCallback(() => {
+        hideDrawer();
         setSearchOpen(true);
         setQuery('');
         setRemote([]);
-      }, []);
+      }, [hideDrawer]);
 
       const closeSearch = useCallback(() => {
         setSearchOpen(false);
@@ -1922,16 +2140,49 @@ window.__ModuleLoader__.load({
         api.openSession(sessionId);
       }, [api, archived, showToast, t]);
 
+      /* 左上角图标 = 收起会话栏（只在工作区优先里露出）；标题行本身仍然不可点 */
+      const collapsePanel = useCallback(() => {
+        patchStore({ pinnedOpen: false });
+      }, [patchStore]);
+
+      /* 切视口：唯一的入口是右上角「视图选项」；切过去时把会话栏打开，免得看到空舞台。
+         切换这一下不让面板做 height 过渡——否则会看到会话栏「长到全屏」的过程 */
+      const setView = useCallback((view) => {
+        if (view === store.view) return;
+        hideDrawer();
+        setViewSwitch(true);
+        patchStore({ view, pinnedOpen: true });
+      }, [hideDrawer, patchStore, store.view]);
+
+      /* 切视口是一次性动作：一帧后把「不做过渡」的类摘掉 */
+      useEffect(() => {
+        if (!viewSwitch) return undefined;
+        const timer = setTimeout(() => setViewSwitch(false), 80);
+        return () => clearTimeout(timer);
+      }, [viewSwitch]);
+
+      /* 抽屉里点一张卡：切到那个工作区、打开它最近一条会话，再把抽屉收掉 */
+      const pickWorkspace = useCallback((workspaceId) => {
+        hideDrawer();
+        setPanelMode('sessions');
+        setFocusId(workspaceId);
+        if (!pinnedOpen) patchStore({ pinnedOpen: true });
+        const ws = wsById.get(workspaceId);
+        const ids = ws ? visibleIdsOf(ws) : [];
+        if (ids.length) selectSession(ids[0]);
+      }, [hideDrawer, pinnedOpen, patchStore, wsById, visibleIdsOf, selectSession]);
+
       useEffect(() => {
         const onKeyDown = (event) => {
           if (event.key !== 'Escape') return;
           if (menu) { setMenu(null); return; }
+          if (drawer) { closeDrawer(); return; }
           if (searchOpen) { setSearchOpen(false); setQuery(''); return; }
           if (pinnedWs && panelMode !== 'sessions') { setPanelMode('sessions'); }
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-      }, [menu, searchOpen, pinnedWs, panelMode]);
+      }, [menu, drawer, closeDrawer, searchOpen, pinnedWs, panelMode]);
 
       useEffect(() => {
         if (!searchOpen) return undefined;
@@ -2024,17 +2275,22 @@ window.__ModuleLoader__.load({
       }, [copyPath, t]);
 
       const viewMenu = useCallback((anchor) => {
-        const group = (label, options) => h('div', { className: 'dwc-mgroup', key: label },
+        const group = (label, options, hint) => h('div', { className: 'dwc-mgroup', key: label },
           h('div', { className: 'dwc-mlabel' }, label),
           options.map((option) => h(MenuItem, {
             key: option.key,
             label: option.label,
             checked: option.checked,
             onClick: option.onClick,
-          })));
+          })),
+          hint ? h('div', { className: 'dwc-mhint' }, hint) : null);
         setMenu({
           anchor,
           render: (close) => h(React.Fragment, null,
+            group(t('viewMode'), [
+              { key: 'workspace', label: t('viewWorkspace'), checked: !focus, onClick: () => { close(); setView('workspace'); } },
+              { key: 'sessions', label: t('viewSessions'), checked: focus, onClick: () => { close(); setView('sessions'); } },
+            ], t('viewHint')),
             group(t('sort'), [
               { key: 'manual', label: t('sortManual'), checked: store.sort === 'manual', onClick: () => { close(); patchStore({ sort: 'manual' }); } },
               { key: 'recent', label: t('sortRecent'), checked: store.sort === 'recent', onClick: () => { close(); patchStore({ sort: 'recent' }); } },
@@ -2045,7 +2301,7 @@ window.__ModuleLoader__.load({
               { key: 'only', label: t('archiveOnly'), checked: store.archived === 'only', onClick: () => { close(); patchStore({ archived: 'only' }); } },
             ])),
         });
-      }, [patchStore, store, t]);
+      }, [focus, patchStore, setView, store, t]);
 
       const addWorkspace = useCallback(() => {
         run(async () => {
@@ -2104,7 +2360,8 @@ window.__ModuleLoader__.load({
 
       /* ── 网格 ── */
 
-      function gridNode() {
+      function gridNode(options) {
+        const picking = !!(options && options.pick);
         if (!cards.length && store.archived === 'only') {
           return h('div', { className: 'dwc-empty' },
             h('span', { className: 'dwc-empty-icon' }, h(Icon, { name: 'archive', size: 22 })),
@@ -2126,13 +2383,16 @@ window.__ModuleLoader__.load({
               + (dragId === ws.workspaceId ? ' is-dragging' : '')
               + (dropId === ws.workspaceId ? ' is-drop' : ''),
             'aria-label': ws.title + (ws.path ? ' · ' + ws.path : '')
-              + (pinnedWs && pinnedWs.workspaceId === ws.workspaceId ? ' · ' + t('collapse') : ''),
+              + (picking ? ' · ' + t('open') : (pinnedWs && pinnedWs.workspaceId === ws.workspaceId ? ' · ' + t('collapse') : '')),
             onMouseEnter: () => setHoverTile(ws.workspaceId),
             onMouseLeave: () => setHoverTile((current) => (current === ws.workspaceId ? null : current)),
             draggable: store.sort === 'manual',
-            onClick: () => focusCard(ws.workspaceId),
+            onClick: () => (picking ? pickWorkspace(ws.workspaceId) : focusCard(ws.workspaceId)),
             onKeyDown: (event) => {
-              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); focusCard(ws.workspaceId); }
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              if (picking) pickWorkspace(ws.workspaceId);
+              else focusCard(ws.workspaceId);
             },
             onDragStart: (event) => {
               setDragId(ws.workspaceId);
@@ -2257,9 +2517,19 @@ window.__ModuleLoader__.load({
             h('span', { className: 'dwc-panel-name' }, label));
         }
 
-        /* 标题行不是按钮了：收起靠「再点那张收进去的卡」，这里只留 ⋯ 菜单 */
+        /* 标题行不是按钮：工作区优先里收起只认左上角那颗图标（或再点那张收进去的卡）；
+           会话栏优先里没东西可露，图标只当标识 */
+        const iconNode = h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: 18, title: ws.title });
         return h('div', { className: 'dwc-panel-head is-static' },
-        h('span', { className: 'dwc-panel-head-icon' }, h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: 18, title: ws.title })),
+        focus
+          ? h('span', { className: 'dwc-panel-head-icon' }, iconNode)
+          : h('button', {
+            type: 'button',
+            className: 'dwc-panel-head-icon dwc-panel-collapse',
+            title: t('collapse'),
+            'aria-label': t('collapse'),
+            onClick: collapsePanel,
+          }, iconNode),
         h(ScrollingText, { className: 'dwc-panel-name', text: ws.title }),
         h('span', { className: 'dwc-panel-actions' },
           h('button', {
@@ -2270,7 +2540,7 @@ window.__ModuleLoader__.load({
           }, h(Icon, { name: 'more', size: 16 }))));
       }
 
-      /* ── 常驻卡片与网格之间的分隔条 ── */
+      /* ── 工作区优先：常驻卡片与网格之间的分隔条 ── */
 
       function splitterNode() {
         if (!pinnedTarget) return null;
@@ -2296,6 +2566,48 @@ window.__ModuleLoader__.load({
             setHeight(pinnedHeight + (event.key === 'ArrowDown' ? step : -step));
           },
         });
+      }
+
+      /* ── 会话栏优先：底部那条按钮，只负责开合卡片抽屉，不拖高度 ── */
+
+      function handleNode() {
+        if (!pinnedTarget) return null;
+        return h('div', {
+          className: 'dwc-split dwc-handle',
+          role: 'button',
+          'aria-label': drawer ? t('collapse') : t('showCards'),
+          'aria-expanded': drawer,
+          tabIndex: 0,
+          title: drawer ? t('collapse') : t('showCards'),
+          ref: splitRef,
+          onClick: toggleDrawer,
+          onKeyDown: (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            toggleDrawer();
+          },
+        },
+        h('span', { className: 'dwc-handle-label' },
+          h(Icon, { name: 'grid', size: 14 }),
+          t('workspaces')),
+        h('span', { className: 'dwc-handle-chevron', 'aria-hidden': 'true' },
+          h(Icon, { name: drawer ? 'chevronDown' : 'chevronUp', size: 14 })));
+      }
+
+      /* 会话栏优先里点底部按钮拉出来的卡片抽屉：没有顶栏，开关只认底部按钮 / Esc / 点外面；
+         选一张卡 = 切过去并打开它最近一条会话 */
+      function drawerNode() {
+        const closing = drawerClosing;
+        return h('div', { className: 'dwc-drawer-layer' + (closing ? ' is-closing' : '') },
+          h('div', { className: 'dwc-drawer-scrim', onMouseDown: closeDrawer }),
+          h('div', {
+            className: 'dwc-drawer' + (closing ? ' is-closing' : ''),
+            role: 'dialog',
+            'aria-label': t('workspaces'),
+            tabIndex: -1,
+            ref: drawerRef,
+          },
+          gridNode({ pick: true })));
       }
 
       function panelNode() {
@@ -2366,16 +2678,24 @@ window.__ModuleLoader__.load({
         '--dwc-hover-icon-scale': String(metrics.hoverScale),
         '--dwc-hover-icon-lift': metrics.hoverLift + 'px',
         '--dwc-pinned-h': pinnedHeight + 'px',
+        /* 分隔条高度：工作区优先 12px，会话栏优先 32px（整条按钮） */
+        '--dwc-split-h': splitH + 'px',
         /* 圆角是「占边长的百分比」，同一档换算到面板上得给 px，否则百分比会变成椭圆 */
         '--dwc-panel-radius': Math.round((store.cardSize * store.radius) / 100) + 'px',
       };
 
       return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail') + (store.scrollbars === 'hide' ? ' dwc-nobars' : '') + (store.borders === 'hide' ? ' dwc-noborders' : '') + (splitDrag ? ' is-splitting' : '')
-          + (pinnedTarget && !pinnedOpen ? ' is-panel-closed' : ''), style: rootStyle, ref: rootRef },
+          + (focus ? ' is-focus' : '')
+          + (viewSwitch ? ' is-view-switch' : '')
+          + (pinnedTarget && !panelOpen ? ' is-panel-closed' : ''), style: rootStyle, ref: rootRef },
         wide ? headerNode() : null,
         wide
-          ? h('div', { className: 'dwc-stage' },
-            searchOpen ? searchNode() : h(React.Fragment, null, panelNode(), splitterNode(), gridNode()))
+          ? h('div', { className: 'dwc-stage', ref: stageRef },
+            searchOpen ? searchNode() : h(React.Fragment, null,
+              panelNode(),
+              focus ? handleNode() : splitterNode(),
+              focus ? null : gridNode(),
+              focus && (drawer || drawerClosing) ? drawerNode() : null))
           : railNode(),
         toast ? h('div', { className: 'dwc-toast', role: 'status' }, toast) : null,
         menu ? h(React.Fragment, null,

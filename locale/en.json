@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Workspace Cards",
-    "description": "Turns the sidebar workspace list into a grid of square cards. The current workspace stays pinned above the grid (fixed height, sessions scroll inside); click any card to pin it there instead. Card size, radius, icon, names and scrollbar are adjustable in Settings."
+    "description": "Turns the sidebar workspace list into a grid of square cards, with the current workspace pinned above it. A Layout option in the section header switches between two views: workspaces first (cards stay, sessions float) and sessions first (sessions fill the sidebar, cards collapse into a bottom handle whose drawer jumps to a workspace's latest session). Card size, radius, icon, names and scrollbar are adjustable in Settings."
   }
 }
