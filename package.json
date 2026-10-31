@@ -1,9 +1,9 @@
 {
   "name": "dsh-workspace-cards",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "DSH 侧栏工作区卡片：正方形图标网格，尺寸 / 圆角 / 图标在设置里调，点卡片原地展开会话面板",
+  "description": "DSH 侧栏工作区卡片：正方形图标网格，当前工作区常驻在网格上方；尺寸 / 圆角 / 图标在设置里调",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

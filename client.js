@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
 
     const PLUGIN_ID = 'dsh-workspace-cards';
     /* 样式接口版本：皮肤插件用 html[data-dwc-api] 门控，接口不兼容时整段不生效 */
-    const PLUGIN_VERSION = '0.2.2';
+    const PLUGIN_VERSION = '0.3.0';
     const SKIN_API = '1';
     const STORE_KEY = 'dsh.workspaceCards.v1';
     /* v1 → v2：名称默认改「仅悬停」；v2 → v3：圆角从像素改成占边长的百分比。 */
@@ -26,7 +26,6 @@ window.__ModuleLoader__.load({
     const ICON_POLL_MS = 2000;
     const SERIF = '"Source Serif 4", "Songti SC", "Noto Serif SC", serif';
     const NOOP_HOOK = () => undefined;
-    const EXPAND_MS = 240;
 
     /* ────────────────────────── 文案 ────────────────────────── */
 
@@ -38,6 +37,7 @@ window.__ModuleLoader__.load({
       back: '返回',
       more: '更多',
       collapse: '收起',
+      resize: '调整常驻卡片高度',
       newSession: '新会话',
       names: '名称',
       namesShow: '常显',
@@ -51,7 +51,7 @@ window.__ModuleLoader__.load({
       settingsTitle: '工作区卡片',
       settingsSub: '卡片与显示',
       settingsLayout: '布局',
-      settingsLayoutHint: '列数随侧栏宽度和卡片大小自动排列，整行居中；圆角 0% 是方块、50% 是整圆。拖动即时生效。',
+      settingsLayoutHint: '列数随侧栏宽度和卡片大小自动排列，整行居中；圆角 0% 是方块、50% 是整圆，常驻卡片跟着同一档走。拖动即时生效。',
       settingsDisplay: '显示',
       settingsPreview: '预览',
       cardSize: '卡片大小',
@@ -67,7 +67,6 @@ window.__ModuleLoader__.load({
       archiveOnly: '仅显示已归档',
       untitled: '未命名',
       emptyWorkspace: '还没有会话',
-      expandMore: '展开其余 {n} 个会话',
       noMatch: '没有匹配的会话',
       searchPlaceholder: '搜索会话名称',
       iconTitle: '设置图标',
@@ -119,6 +118,7 @@ window.__ModuleLoader__.load({
       back: 'Back',
       more: 'More',
       collapse: 'Collapse',
+      resize: 'Resize pinned card',
       newSession: 'New session',
       names: 'Names',
       namesShow: 'Always',
@@ -132,7 +132,7 @@ window.__ModuleLoader__.load({
       settingsTitle: 'Workspace cards',
       settingsSub: 'Cards & display',
       settingsLayout: 'Layout',
-      settingsLayoutHint: 'Columns follow the sidebar width and card size; rows stay centered. Radius 0% is a square, 50% a full circle.',
+      settingsLayoutHint: 'Columns follow the sidebar width and card size; rows stay centered. Radius 0% is a square, 50% a full circle — the pinned card follows the same setting.',
       settingsDisplay: 'Display',
       settingsPreview: 'Preview',
       cardSize: 'Card size',
@@ -148,7 +148,6 @@ window.__ModuleLoader__.load({
       archiveOnly: 'Archived only',
       untitled: 'Untitled',
       emptyWorkspace: 'No sessions yet',
-      expandMore: 'Show {n} more sessions',
       noMatch: 'No matching sessions',
       searchPlaceholder: 'Search session titles',
       iconTitle: 'Workspace icon',
@@ -262,7 +261,13 @@ window.__ModuleLoader__.load({
       /* 圆角按边长百分比：0% = 方块，50% = 整圆 */
       radius: { min: 0, max: 50, step: 1, def: 21, unit: '%' },
       iconSize: { min: 14, max: 40, step: 1, def: 26, unit: ' px' },
+      /* 常驻卡片高度：拖动分隔条改，也存盘 */
+      /* 下限 = 标题 44 + 内边距 14 + 「新会话」32 + 间隔 2 + 一条会话 32，再矮就只剩半行 */
+      pinnedHeight: { min: 124, max: 520, step: 4, def: 192, unit: ' px' },
     };
+
+    /* 不管面板拖多高，底下至少留这么多给「分隔条 12 + 网格 138」，与 CSS 的 max-height 对齐 */
+    const GRID_MIN = 150;
 
     const DEFAULT_STORE = {
       icons: {},
@@ -275,6 +280,9 @@ window.__ModuleLoader__.load({
       iconSize: LIMITS.iconSize.def,
       sort: 'manual',
       archived: 'hide',
+      /* 常驻卡片（当前工作区）开着还是收起；收起后所有卡片都回网格 */
+      pinnedOpen: true,
+      pinnedHeight: LIMITS.pinnedHeight.def,
     };
 
     function clampNumber(raw, limit) {
@@ -303,6 +311,8 @@ window.__ModuleLoader__.load({
         cardSize,
         radius: version >= 3 ? clampNumber(src.radius, LIMITS.radius) : clampNumber(legacyRadius, LIMITS.radius),
         iconSize: clampNumber(src.iconSize, LIMITS.iconSize),
+        pinnedOpen: src.pinnedOpen !== false,
+        pinnedHeight: clampNumber(src.pinnedHeight, LIMITS.pinnedHeight),
       };
     }
 
@@ -353,6 +363,8 @@ window.__ModuleLoader__.load({
           iconSize: value.iconSize,
           sort: value.sort,
           archived: value.archived,
+          pinnedOpen: value.pinnedOpen !== false,
+          pinnedHeight: value.pinnedHeight,
         }));
       } catch (error) {
         /* 隐私模式下 localStorage 不可写，退化成内存态即可 */
@@ -656,12 +668,12 @@ window.__ModuleLoader__.load({
 .dwc-input::placeholder { color: var(--dsw-alias-label-caption); }
 .dwc-input:focus { border-color: var(--dsw-alias-state-business-primary); }
 
-/* ── 舞台：网格与展开卡片共处一层 ── */
-.dwc-stage { position: relative; flex: 1; min-height: 0; }
+/* ── 舞台：常驻卡片在上，网格吃剩余高度 ── */
+.dwc-stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 .dwc-grid {
-  position: absolute;
-  inset: 0;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, var(--dwc-card-size, 76px));
@@ -672,7 +684,6 @@ window.__ModuleLoader__.load({
   background: var(--dwc-grid-bg, transparent);
 }
 .dwc-grid, .dwc-sr, .dwc-panel-body { animation: dwc-in 160ms ease both; }
-.dwc-grid[aria-hidden="true"] { pointer-events: none; }
 @keyframes dwc-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 
 .dwc-tile {
@@ -778,24 +789,80 @@ window.__ModuleLoader__.load({
 .dwc-tile.is-names-hover:focus-visible .dwc-tile-icon { transform: translateY(var(--dwc-hover-icon-lift, 0px)) scale(var(--dwc-hover-icon-scale, 1)); }
 
 .dwc-badge { position: absolute; z-index: 3; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: var(--dwc-badge-size, 7px); height: var(--dwc-badge-size, 7px); border-radius: 50%; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
+.dwc-tile.is-pinned { transform: scale(var(--dwc-pinned-scale, 0.86)); }
+.dwc-tile.is-pinned:hover { transform: scale(var(--dwc-pinned-scale, 0.86)) translateY(-1px); }
+
+/* 常驻卡片与网格之间的抓取带：跨在面板底边和网格顶边之间，悬停才露出发丝线 */
+.dwc-split {
+  position: relative;
+  flex: 0 0 auto;
+  height: 12px;
+  margin: 0 2px;
+  cursor: row-resize;
+  touch-action: none;
+  z-index: 2;
+  transition: height 180ms cubic-bezier(.2, .8, .2, 1);
+}
+.dwc-root.is-panel-closed .dwc-split {
+  height: 0;
+  pointer-events: none;
+  transition: height 160ms cubic-bezier(.4, 0, .2, 1);
+}
+.dwc-root.is-splitting .dwc-split { transition: none; }
+.dwc-split::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  height: 1px;
+  margin-top: -0.5px;
+  border-radius: 1px;
+  background: var(--dsw-alias-border-l2);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.dwc-split:hover::after,
+.dwc-split:focus-visible::after,
+.dwc-split.is-active::after { opacity: 1; }
+.dwc-split:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: -2px; border-radius: 6px; }
+.dwc-root.is-splitting { cursor: row-resize; user-select: none; }
+
 .dwc-badge[data-kind="pending"] { background: var(--dwc-badge-pending, var(--dsw-alias-state-warn-primary)); }
 .dwc-badge[data-kind="running"] { background: var(--dwc-badge-running, var(--dsw-alias-state-business-primary)); animation: dwc-pulse 1.7s ease-in-out infinite; }
 .dwc-badge[data-kind="done"] { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dwc-badge-done, var(--dsw-alias-state-success-secondary)), 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
 @keyframes dwc-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.78); } }
 
-/* ── 展开后的卡片 ── */
+/* ── 常驻卡片：当前工作区钉在网格上方，高度固定，会话超出内部滚动 ── */
 .dwc-panel {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
+  flex: 0 0 auto;
+  height: var(--dwc-pinned-h, 192px);
+  /* 窗口矮的时候别让面板把网格吃光 */
+  max-height: calc(100% - 150px);
+  margin: 2px 2px 0;
   overflow: hidden;
-  transform-origin: 0 0;
-  border-radius: 20px;
+  border-radius: var(--dwc-panel-radius, 16px);
+  corner-shape: round;
   background-color: var(--dwc-panel-bg, var(--dsw-alias-bg-base));
   background-image: var(--dwc-panel-bg-image, linear-gradient(var(--dsw-alias-bg-layer-1), var(--dsw-alias-bg-layer-1)));
   border: var(--dwc-panel-ring, 1px solid var(--dsw-alias-border-l1));
   box-shadow: var(--dwc-panel-shadow, var(--dsw-shadow-lv2));
+  /* 展开 / 收起：高度从 0 长到 --dwc-pinned-h，网格被顺势推下去；收起走另一条更短的曲线 */
+  /* 只做高度：内容被下沿裁掉，像窗帘往上卷；不做淡出，否则会出现"看不见但还占位"的空档 */
+  transition: height 180ms cubic-bezier(.2, .8, .2, 1), margin-top 180ms, margin-bottom 180ms,
+    border-width 180ms;
 }
+.dwc-root.is-panel-closed .dwc-panel {
+  height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-width: 0;
+  visibility: hidden;
+  transition: height 160ms cubic-bezier(.4, 0, .2, 1), margin-top 160ms, margin-bottom 160ms,
+    border-width 160ms, visibility 0s linear 160ms;
+}
+/* 拖动分隔条时别让它跟着缓动，否则跟手是糊的 */
+.dwc-root.is-splitting .dwc-panel { transition: none; }
 .dwc-panel-inner {
   position: relative;
   z-index: 1;
@@ -803,11 +870,7 @@ window.__ModuleLoader__.load({
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  opacity: 0;
-  transition: opacity 140ms ease;
 }
-.dwc-panel.is-open .dwc-panel-inner { opacity: 1; }
-.dwc-panel.is-opening .dwc-panel-inner { transition-delay: 110ms; }
 
 .dwc-panel-head {
   display: flex;
@@ -820,8 +883,6 @@ window.__ModuleLoader__.load({
 }
 .dwc-panel-head.is-static { cursor: default; }
 .dwc-panel-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
-.dwc-collapse-hint { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; color: var(--dsw-alias-label-caption); transition: color 120ms ease; }
-.dwc-panel-head:hover .dwc-collapse-hint { color: var(--dsw-alias-label-secondary); }
 .dwc-panel-head-icon { flex: 0 0 auto; display: flex; width: 20px; height: 20px; align-items: center; justify-content: center; color: var(--dsw-alias-label-secondary); }
 .dwc-scrolltext { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dwc-scrolltext-inner { display: inline-block; white-space: nowrap; transition-property: transform; transition-timing-function: linear; }
@@ -836,31 +897,8 @@ window.__ModuleLoader__.load({
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
-  border-radius: 20px 20px 0 0;
-  transition: background-color 130ms ease, border-radius 170ms ease;
+  border-radius: var(--dwc-panel-radius, 16px) var(--dwc-panel-radius, 16px) 0 0;
 }
-.dwc-panel-header:hover,
-.dwc-panel-header:focus-within { background-color: var(--dsw-alias-interactive-bg-hover); border-radius: 20px 20px 14px 14px; }
-.dwc-panel-header.is-static:hover { background-color: transparent; border-radius: 20px 20px 0 0; }
-.dwc-panel-sub {
-  display: flex;
-  justify-content: center;
-  padding: 0 12px;
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--dsw-alias-label-caption);
-  transition: max-height 170ms ease, opacity 130ms ease, padding-bottom 170ms ease;
-}
-.dwc-panel-header:hover .dwc-panel-sub,
-.dwc-panel-header:focus-within .dwc-panel-sub {
-  max-height: 30px;
-  opacity: 1;
-  padding: 2px 12px 8px;
-}
-.dwc-panel-sub .dwc-scrolltext { max-width: 100%; }
 .dwc-panel-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 2px 6px 12px; }
 
 .dwc-row {
@@ -911,20 +949,6 @@ window.__ModuleLoader__.load({
 
 .dwc-row-new { color: var(--dsw-alias-state-business-primary); }
 .dwc-row-new .dwc-row-title { font-weight: 500; }
-
-.dwc-more-row {
-  flex: 0 0 auto;
-  height: 28px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-  padding: 0 8px;
-}
-.dwc-more-row:hover { color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-interactive-bg-hover); }
 
 .dwc-empty {
   flex: 1;
@@ -1145,7 +1169,7 @@ window.__ModuleLoader__.load({
 
 @media (prefers-reduced-motion: reduce) {
   .dwc-grid, .dwc-sr, .dwc-badge[data-kind="running"], .dwc-dot[data-kind="running"] i { animation: none; }
-  .dwc-panel { transition: none; }
+  .dwc-panel, .dwc-split, .dwc-tile, .dwc-tile-icon { transition: none; }
 }
 `;
 
@@ -1566,23 +1590,22 @@ window.__ModuleLoader__.load({
       const [fileIcons, setFileIcons] = useState({});
       const [iconDir, setIconDir] = useState('');
       const [iconRouteDown, setIconRouteDown] = useState(false);
-      const [expanded, setExpanded] = useState(null);
-      const [panelOpen, setPanelOpen] = useState(false);
+      const [focusId, setFocusId] = useState(null);
+      const [lastWsId, setLastWsId] = useState(null);
       const [panelMode, setPanelMode] = useState('sessions');
       const [searchOpen, setSearchOpen] = useState(false);
       const [query, setQuery] = useState('');
       const [remote, setRemote] = useState([]);
-      const [reveal, setReveal] = useState(0);
-      const [stageHeight, setStageHeight] = useState(0);
       const [menu, setMenu] = useState(null);
       const [toast, setToast] = useState(null);
       const [dragId, setDragId] = useState(null);
       const [dropId, setDropId] = useState(null);
       const [hoverTile, setHoverTile] = useState(null);
+      const [splitDrag, setSplitDrag] = useState(false);
+      const [splitLive, setSplitLive] = useState(null);
       const rootRef = useRef(null);
-      const stageRef = useRef(null);
-      const panelRef = useRef(null);
-      const closingRef = useRef(false);
+      const splitDragRef = useRef(null);
+      const splitLiveRef = useRef(null);
 
       useEffect(() => storeHub.subscribe(setStoreState), []);
 
@@ -1643,70 +1666,12 @@ window.__ModuleLoader__.load({
         return () => clearTimeout(timer);
       }, [toast]);
 
-      useEffect(() => () => {
-        if (panelRef.current) {
-          try { panelRef.current.getAnimations().forEach((anim) => anim.cancel()); } catch (error) { /* noop */ }
-        }
-      }, []);
-
-      useLayoutEffect(() => {
-        if (!expanded) { setPanelOpen(false); return undefined; }
-        const el = panelRef.current;
-        const stage = stageRef.current;
-        setPanelOpen(false);
-        closingRef.current = false;
-        if (!el || !stage) return undefined;
-
-        const box = stage.getBoundingClientRect();
-        const from = expanded.from;
-        const sx = from.width / Math.max(1, box.width);
-        const sy = from.height / Math.max(1, box.height);
-        let animation = null;
-        try {
-          animation = el.animate([
-            {
-              transform: 'translate(' + from.left + 'px, ' + from.top + 'px) scale(' + sx + ', ' + sy + ')',
-              borderRadius: '16px',
-            },
-            { transform: 'none', borderRadius: '20px' },
-          ], { duration: EXPAND_MS, easing: 'cubic-bezier(.2, .8, .2, 1)' });
-        } catch (error) {
-          animation = null;
-        }
-        const timer = setTimeout(() => setPanelOpen(true), 100);
-        return () => {
-          clearTimeout(timer);
-          if (animation) { try { animation.cancel(); } catch (error) { /* noop */ } }
-        };
-      }, [expanded && expanded.id]);
-
-      useEffect(() => { setReveal(0); setPanelMode('sessions'); }, [expanded && expanded.id]);
-
-      useEffect(() => {
-        const el = stageRef.current;
-        if (!el) return undefined;
-        const update = () => setStageHeight(el.clientHeight);
-        update();
-        if (typeof ResizeObserver === 'undefined') return undefined;
-        const observer = new ResizeObserver(update);
-        observer.observe(el);
-        return () => observer.disconnect();
-      }, [wide]);
-
-      const bodyRoom = () => Math.max(0, (stageHeight || 528) - 44 - 30);
-
       useEffect(() => {
         if (!wide) {
-          setExpanded(null);
           setSearchOpen(false);
+          setFocusId(null);
         }
       }, [wide]);
-
-      useEffect(() => {
-        if (expanded && !items.some((item) => item.workspaceId === expanded.id)) {
-          setExpanded(null);
-        }
-      }, [expanded, items]);
 
       const currentId = useMemo(() => {
         if (panelActive) return null;
@@ -1717,6 +1682,34 @@ window.__ModuleLoader__.load({
         }
         return null;
       }, [sessionSnap.ids, byId, panelActive]);
+
+      /* 常驻卡片显示谁：先看当前焦点，再跟随当前会话所在的工作区，
+         都没有时留在上一个——避免打开会话面板之类的瞬时空值把整块网格推上推下。 */
+      const currentWsId = useMemo(() => {
+        if (!currentId) return null;
+        for (const ws of items) {
+          if ((ws.sessionIds || []).includes(currentId)) return ws.workspaceId;
+        }
+        return null;
+      }, [currentId, items]);
+
+      useEffect(() => {
+        if (!currentWsId) return;
+        setLastWsId(currentWsId);
+        setFocusId(null);
+      }, [currentWsId]);
+
+      const pinnedId = focusId || currentWsId || lastWsId;
+      const pinnedOpen = store.pinnedOpen !== false;
+
+      useEffect(() => { setPanelMode('sessions'); }, [pinnedId]);
+
+      useEffect(() => {
+        if (pinnedId && !items.some((item) => item.workspaceId === pinnedId)) {
+          setFocusId(null);
+          setLastWsId(null);
+        }
+      }, [pinnedId, items]);
 
       const visibleIdsOf = useCallback((ws) => {
         const ids = Array.isArray(ws.sessionIds) ? ws.sessionIds : [];
@@ -1786,6 +1779,64 @@ window.__ModuleLoader__.load({
         return map;
       }, [items]);
 
+      /* 谁在上面：只要还认得出这个工作区就挂着（收起来也要留着，动效才有得放）；
+         pinnedWs 才是「现在开着」，收起后为 null */
+      const pinnedTarget = pinnedId ? wsById.get(pinnedId) || null : null;
+      const pinnedWs = pinnedOpen ? pinnedTarget : null;
+
+      /* 面板骨架要一直挂着，展开才有得动画；会话列表不必——
+         收起动画跑完（160ms）再卸载，常驻 DOM 就只剩标题行那几个节点 */
+      const [bodyAlive, setBodyAlive] = useState(pinnedOpen);
+      useEffect(() => {
+        if (pinnedOpen) { setBodyAlive(true); return undefined; }
+        if (!bodyAlive) return undefined;
+        const timer = setTimeout(() => setBodyAlive(false), 200);
+        return () => clearTimeout(timer);
+      }, [pinnedOpen, bodyAlive]);
+
+      /* 拖动时用本地值，松手才落盘——否则每个 pointermove 都写一次 localStorage */
+      const pinnedHeight = splitLive !== null ? splitLive : store.pinnedHeight;
+
+      const beginSplit = useCallback((event) => {
+        if (event.button !== 0) return;
+        const host = event.currentTarget.parentElement;
+        const box = host ? host.getBoundingClientRect() : null;
+        if (!box) return;
+        event.preventDefault();
+        splitDragRef.current = {
+          y: event.clientY,
+          h: pinnedHeight,
+          maxH: Math.max(LIMITS.pinnedHeight.min + 48, box.height - GRID_MIN),
+        };
+        setSplitDrag(true);
+      }, [pinnedHeight]);
+
+      useEffect(() => {
+        if (!splitDrag) return undefined;
+        const move = (event) => {
+          const drag = splitDragRef.current;
+          if (!drag) return;
+          const next = Math.round(Math.min(drag.maxH, Math.max(LIMITS.pinnedHeight.min, drag.h + (event.clientY - drag.y))));
+          splitLiveRef.current = next;
+          setSplitLive(next);
+        };
+        const end = () => {
+          const value = splitLiveRef.current;
+          splitLiveRef.current = null;
+          setSplitLive(null);
+          setSplitDrag(false);
+          if (value !== null) patchStore({ pinnedHeight: value });
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+        return () => {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', end);
+          window.removeEventListener('pointercancel', end);
+        };
+      }, [splitDrag, patchStore]);
+
       const showToast = useCallback((text) => setToast(text), []);
 
       const run = useCallback(async (operation, fallback) => {
@@ -1797,64 +1848,28 @@ window.__ModuleLoader__.load({
         }
       }, [showToast, t]);
 
-      const collapse = useCallback(() => {
-        if (!expanded || closingRef.current) return;
-        closingRef.current = true;
+      /* 收起常驻卡片：所有工作区都回到网格里，状态存盘，下次进来还是收起的 */
+      const closeCard = useCallback(() => {
         setPanelMode('sessions');
-        setPanelOpen(false);
+        patchStore({ pinnedOpen: false });
+      }, [patchStore]);
 
-        const el = panelRef.current;
-        const stage = stageRef.current;
-        const card = stage ? stage.querySelector('[data-ws-id="' + expanded.id + '"]') : null;
-        const done = () => {
-          setExpanded(null);
-          closingRef.current = false;
-        };
-        if (!el || !stage || !card) { done(); return; }
-
-        const box = stage.getBoundingClientRect();
-        const rect = card.getBoundingClientRect();
-        const sx = rect.width / Math.max(1, box.width);
-        const sy = rect.height / Math.max(1, box.height);
-        let animation = null;
-        try {
-          animation = el.animate([
-            { transform: 'none', borderRadius: '20px' },
-            {
-              transform: 'translate(' + (rect.left - box.left) + 'px, ' + (rect.top - box.top) + 'px) scale(' + sx + ', ' + sy + ')',
-              borderRadius: '16px',
-            },
-          ], { duration: EXPAND_MS, easing: 'cubic-bezier(.4, 0, .2, 1)', fill: 'forwards' });
-        } catch (error) {
-          animation = null;
+      /* 点卡片 = 把这张提到常驻位；再点同一个 = 收起来。卡片自己就是开关。 */
+      const focusCard = useCallback((workspaceId) => {
+        setPanelMode('sessions');
+        if (pinnedOpen && pinnedId === workspaceId) {
+          patchStore({ pinnedOpen: false });
+          return;
         }
-        if (animation) animation.onfinish = done; else done();
-      }, [expanded]);
-
-      const openCard = useCallback((workspaceId, element) => {
-        const stage = stageRef.current;
-        if (!stage || !element) return;
-        const box = stage.getBoundingClientRect();
-        const rect = element.getBoundingClientRect();
-        try { element.blur(); } catch (error) { /* noop */ }
-        setExpanded({
-          id: workspaceId,
-          from: {
-            left: rect.left - box.left,
-            top: rect.top - box.top,
-            width: rect.width,
-            height: rect.height,
-          },
-        });
-        setPanelMode('sessions');
-      }, []);
+        setFocusId(workspaceId);
+        if (!pinnedOpen) patchStore({ pinnedOpen: true });
+      }, [patchStore, pinnedOpen, pinnedId]);
 
       const openSearch = useCallback(() => {
-        if (expanded) { setExpanded(null); }
         setSearchOpen(true);
         setQuery('');
         setRemote([]);
-      }, [expanded]);
+      }, []);
 
       const closeSearch = useCallback(() => {
         setSearchOpen(false);
@@ -1875,12 +1890,12 @@ window.__ModuleLoader__.load({
           if (event.key !== 'Escape') return;
           if (menu) { setMenu(null); return; }
           if (searchOpen) { setSearchOpen(false); setQuery(''); return; }
-          if (expanded && panelMode !== 'sessions') { setPanelMode('sessions'); return; }
-          if (expanded) { collapse(); }
+          if (pinnedWs && panelMode !== 'sessions') { setPanelMode('sessions'); return; }
+          if (pinnedWs) closeCard();
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-      }, [menu, searchOpen, expanded, panelMode, collapse]);
+      }, [menu, searchOpen, pinnedWs, panelMode, closeCard]);
 
       useEffect(() => {
         if (!searchOpen) return undefined;
@@ -2070,16 +2085,18 @@ window.__ModuleLoader__.load({
             'data-ws-id': ws.workspaceId,
             className: 'dwc-tile'
               + (card.current ? ' is-current' : '')
+              + (pinnedWs && pinnedWs.workspaceId === ws.workspaceId ? ' is-pinned' : '')
               + (store.showNames ? '' : ' is-names-hover')
               + (dragId === ws.workspaceId ? ' is-dragging' : '')
               + (dropId === ws.workspaceId ? ' is-drop' : ''),
-            'aria-label': ws.title + (ws.path ? ' · ' + ws.path : ''),
+            'aria-label': ws.title + (ws.path ? ' · ' + ws.path : '')
+              + (pinnedWs && pinnedWs.workspaceId === ws.workspaceId ? ' · ' + t('collapse') : ''),
             onMouseEnter: () => setHoverTile(ws.workspaceId),
             onMouseLeave: () => setHoverTile((current) => (current === ws.workspaceId ? null : current)),
             draggable: store.sort === 'manual',
-            onClick: (event) => openCard(ws.workspaceId, event.currentTarget),
+            onClick: () => focusCard(ws.workspaceId),
             onKeyDown: (event) => {
-              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCard(ws.workspaceId, event.currentTarget); }
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); focusCard(ws.workspaceId); }
             },
             onDragStart: (event) => {
               setDragId(ws.workspaceId);
@@ -2109,7 +2126,7 @@ window.__ModuleLoader__.load({
           card.badge ? h('i', { className: 'dwc-badge', 'data-kind': card.badge }) : null);
         });
 
-        return h('div', { className: 'dwc-grid', role: 'grid', 'aria-label': t('workspaces'), onKeyDown: moveFocus, 'aria-hidden': expanded ? 'true' : undefined }, tiles);
+        return h('div', { className: 'dwc-grid', role: 'grid', 'aria-label': t('workspaces'), onKeyDown: moveFocus }, tiles);
       }
 
       /* ── 展开的卡片 ── */
@@ -2156,22 +2173,16 @@ window.__ModuleLoader__.load({
             onDelete: () => {
               run(() => api.deleteWorkspace(ws.workspaceId)).then(() => {
                 setPanelMode('sessions');
-                setExpanded(null);
-                setPanelOpen(false);
+                setFocusId(null);
+                setLastWsId(null);
               });
             },
           });
         }
 
+        /* 常驻卡片高度是固定的：会话全渲染，超出部分由面板内部滚动，不再折叠成「展开其余 N 个」 */
         const ids = visibleIdsOf(ws);
-        const maxPlain = Math.max(1, Math.floor((bodyRoom() - 34) / 34));
-        const maxWithMore = Math.max(1, Math.floor((bodyRoom() - 64) / 34));
-        const want = maxPlain + reveal;
-        const take = want >= ids.length ? ids.length : Math.max(1, maxWithMore + reveal);
-        const shown = ids.slice(0, take);
-        const rest = ids.length - shown.length;
-
-        const rows = shown.map((id) => h(SessionRow, {
+        const rows = ids.map((id) => h(SessionRow, {
           key: id,
           session: byId[id],
           status: statusOf(statuses, id),
@@ -2192,12 +2203,7 @@ window.__ModuleLoader__.load({
           },
           h('span', { className: 'dwc-dot' }, h(Icon, { name: 'add', size: 14 })),
           h('span', { className: 'dwc-row-title' }, t('newSession'))),
-          rows.length ? rows : h('div', { className: 'dwc-empty' }, h('span', null, t('emptyWorkspace'))),
-          rest > 0 ? h('button', {
-            type: 'button',
-            className: 'dwc-more-row',
-            onClick: () => setReveal((value) => value + maxWithMore),
-          }, t('expandMore', { n: rest })) : null);
+          rows.length ? rows : h('div', { className: 'dwc-empty' }, h('span', null, t('emptyWorkspace'))));
       }
 
       function panelHead(ws) {
@@ -2208,16 +2214,8 @@ window.__ModuleLoader__.load({
             h('span', { className: 'dwc-panel-name' }, label));
         }
 
-        return h('div', {
-          className: 'dwc-panel-head',
-          role: 'button',
-          tabIndex: 0,
-          'aria-label': ws.title + ' · ' + t('collapse'),
-          onClick: collapse,
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); collapse(); }
-          },
-        },
+        /* 标题行不是按钮了：收起靠「再点那张收进去的卡」，这里只留 ⋯ 菜单 */
+        return h('div', { className: 'dwc-panel-head is-static' },
         h('span', { className: 'dwc-panel-head-icon' }, h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: 18, title: ws.title })),
         h(ScrollingText, { className: 'dwc-panel-name', text: ws.title }),
         h('span', { className: 'dwc-panel-actions' },
@@ -2226,27 +2224,50 @@ window.__ModuleLoader__.load({
             className: 'dwc-ib',
             'aria-label': t('more'),
             onClick: (event) => { event.stopPropagation(); workspaceMenu(ws, event.currentTarget); },
-          }, h(Icon, { name: 'more', size: 16 })),
-          h('span', { className: 'dwc-collapse-hint', 'aria-hidden': 'true' }, h(Icon, { name: 'collapse', size: 16 }))));
+          }, h(Icon, { name: 'more', size: 16 }))));
+      }
+
+      /* ── 常驻卡片与网格之间的分隔条 ── */
+
+      function splitterNode() {
+        if (!pinnedTarget) return null;
+        const min = LIMITS.pinnedHeight.min;
+        const max = LIMITS.pinnedHeight.max;
+        const setHeight = (value) => patchStore({ pinnedHeight: Math.round(Math.min(max, Math.max(min, value))) });
+        return h('div', {
+          className: 'dwc-split' + (splitDrag ? ' is-active' : ''),
+          role: 'separator',
+          'aria-orientation': 'horizontal',
+          'aria-label': t('resize'),
+          'aria-valuemin': min,
+          'aria-valuemax': max,
+          'aria-valuenow': Math.round(pinnedHeight),
+          tabIndex: pinnedOpen ? 0 : -1,
+          title: t('resize'),
+          onPointerDown: beginSplit,
+          onDoubleClick: () => setHeight(LIMITS.pinnedHeight.def),
+          onKeyDown: (event) => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+            event.preventDefault();
+            const step = event.shiftKey ? 48 : 12;
+            setHeight(pinnedHeight + (event.key === 'ArrowDown' ? step : -step));
+          },
+        });
       }
 
       function panelNode() {
-        if (!expanded) return null;
-        const ws = wsById.get(expanded.id);
-        if (!ws) return null;
+        if (!pinnedTarget) return null;
+        const ws = pinnedTarget;
 
         return h('div', {
-          className: 'dwc-panel' + (panelOpen ? ' is-open' : ''),
-          ref: panelRef,
-          role: 'dialog',
+          className: 'dwc-panel',
+          role: 'region',
           'aria-label': ws.title,
         },
         h('span', { className: 'dwc-panel-paint', 'aria-hidden': 'true' }),
         h('div', { className: 'dwc-panel-inner' },
-          h('div', { className: 'dwc-panel-header' + (panelMode !== 'sessions' ? ' is-static' : '') },
-            panelHead(ws),
-            panelMode === 'sessions' ? h('div', { className: 'dwc-panel-sub' }, h(ScrollingText, { text: ws.path || '' })) : null),
-          panelBody(ws)));
+          h('div', { className: 'dwc-panel-header is-static' }, panelHead(ws)),
+          bodyAlive ? panelBody(ws) : null));
       }
 
       /* ── 搜索 ── */
@@ -2301,14 +2322,17 @@ window.__ModuleLoader__.load({
         '--dwc-badge-inset': metrics.badgeInset + 'px',
         '--dwc-hover-icon-scale': String(metrics.hoverScale),
         '--dwc-hover-icon-lift': metrics.hoverLift + 'px',
+        '--dwc-pinned-h': pinnedHeight + 'px',
+        /* 圆角是「占边长的百分比」，同一档换算到面板上得给 px，否则百分比会变成椭圆 */
+        '--dwc-panel-radius': Math.round((store.cardSize * store.radius) / 100) + 'px',
       };
 
-      return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail') + (store.scrollbars === 'hide' ? ' dwc-nobars' : '') + (store.borders === 'hide' ? ' dwc-noborders' : ''), style: rootStyle, ref: rootRef },
+      return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail') + (store.scrollbars === 'hide' ? ' dwc-nobars' : '') + (store.borders === 'hide' ? ' dwc-noborders' : '') + (splitDrag ? ' is-splitting' : '')
+          + (pinnedTarget && !pinnedOpen ? ' is-panel-closed' : ''), style: rootStyle, ref: rootRef },
         wide ? headerNode() : null,
         wide
-          ? h('div', { className: 'dwc-stage', ref: stageRef },
-            searchOpen ? searchNode() : gridNode(),
-            searchOpen ? null : panelNode())
+          ? h('div', { className: 'dwc-stage' },
+            searchOpen ? searchNode() : h(React.Fragment, null, panelNode(), splitterNode(), gridNode()))
           : railNode(),
         toast ? h('div', { className: 'dwc-toast', role: 'status' }, toast) : null,
         menu ? h(React.Fragment, null,

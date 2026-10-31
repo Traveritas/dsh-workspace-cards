@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Workspace Cards",
-    "description": "Turns the sidebar workspace list into a grid of square cards; card size, radius, icon, names and scrollbar are adjustable in Settings. Clicking a card opens an overlay session drawer."
+    "description": "Turns the sidebar workspace list into a grid of square cards. The current workspace stays pinned above the grid (fixed height, sessions scroll inside); click any card to pin it there instead. Card size, radius, icon, names and scrollbar are adjustable in Settings."
   }
 }
