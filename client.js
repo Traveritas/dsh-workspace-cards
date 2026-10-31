@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
 
     const PLUGIN_ID = 'dsh-workspace-cards';
     /* 样式接口版本：皮肤插件用 html[data-dwc-api] 门控，接口不兼容时整段不生效 */
-    const PLUGIN_VERSION = '0.2.1';
+    const PLUGIN_VERSION = '0.2.2';
     const SKIN_API = '1';
     const STORE_KEY = 'dsh.workspaceCards.v1';
     /* v1 → v2：名称默认改「仅悬停」；v2 → v3：圆角从像素改成占边长的百分比。 */
@@ -45,6 +45,9 @@ window.__ModuleLoader__.load({
       scrollbar: '滚动条',
       scrollbarShow: '显示',
       scrollbarHide: '隐藏',
+      borders: '边框',
+      bordersShow: '显示',
+      bordersHide: '隐藏',
       settingsTitle: '工作区卡片',
       settingsSub: '卡片与显示',
       settingsLayout: '布局',
@@ -123,6 +126,9 @@ window.__ModuleLoader__.load({
       scrollbar: 'Scrollbar',
       scrollbarShow: 'Show',
       scrollbarHide: 'Hide',
+      borders: 'Border',
+      bordersShow: 'Show',
+      bordersHide: 'Hide',
       settingsTitle: 'Workspace cards',
       settingsSub: 'Cards & display',
       settingsLayout: 'Layout',
@@ -263,6 +269,7 @@ window.__ModuleLoader__.load({
       order: [],
       showNames: false,
       scrollbars: 'show',
+      borders: 'show',
       cardSize: LIMITS.cardSize.def,
       radius: LIMITS.radius.def,
       iconSize: LIMITS.iconSize.def,
@@ -292,6 +299,7 @@ window.__ModuleLoader__.load({
         order: Array.isArray(src.order) ? src.order : [],
         showNames: version >= 2 ? src.showNames === true : DEFAULT_STORE.showNames,
         scrollbars: src.scrollbars === 'hide' ? 'hide' : 'show',
+        borders: src.borders === 'hide' ? 'hide' : 'show',
         cardSize,
         radius: version >= 3 ? clampNumber(src.radius, LIMITS.radius) : clampNumber(legacyRadius, LIMITS.radius),
         iconSize: clampNumber(src.iconSize, LIMITS.iconSize),
@@ -339,6 +347,7 @@ window.__ModuleLoader__.load({
           order: value.order,
           showNames: value.showNames,
           scrollbars: value.scrollbars,
+          borders: value.borders,
           cardSize: value.cardSize,
           radius: value.radius,
           iconSize: value.iconSize,
@@ -709,6 +718,9 @@ window.__ModuleLoader__.load({
   inset: 0;
   z-index: 2;
   border-radius: inherit;
+  /* 宿主全局是 superellipse(1.5)，卡片自己改成 round；这层必须一起改，
+     否则描边和裁切在四个角上跟卡片不是一个形状 */
+  corner-shape: inherit;
   pointer-events: none;
   box-shadow: var(--dwc-tile-ring, inset 0 0 0 1px var(--dsw-alias-border-l1));
 }
@@ -729,6 +741,7 @@ window.__ModuleLoader__.load({
   display: block;
   pointer-events: none;
   border-radius: inherit;
+  corner-shape: inherit;
 }
 .dwc-tile-paint { overflow: hidden; }
 
