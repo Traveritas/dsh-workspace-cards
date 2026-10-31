@@ -30,7 +30,8 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 - **一个页面**：区头始终是「工作区 ⌕ ⊞ ＋」，不随展开切换；搜索也只是临时顶替网格区。
 - **视图选项**：只负责排布与筛选——排序（手动 / 最近活跃）、归档（隐藏 / 全部 / 仅已归档）。
 - **设置页**：「设置 → 工作区卡片」管外观：卡片大小（56–120 px）、圆角（0–50%，按边长百分比）、图标大小（14–40 px）三个滑块，
-  名称（常显 / 仅悬停）、滚动条（显示 / 隐藏）两个开关，加一个「恢复默认」；带三张卡片的实时预览，拖动即时生效。
+  名称（常显 / 仅悬停）、边框（显示 / 隐藏）、滚动条（显示 / 隐藏）三个开关，加一个「恢复默认」；带三张卡片的实时预览，拖动即时生效。
+  边框关掉只去掉底边和悬停那层，打开中的主色描边照旧。
 - **图标**：字符（汉字 / 字母 / emoji）、内置 36 个线性图标、自定义 SVG（粘贴 / 选文件 / 让 agent 存文件）。
 - **搜索**：标题 + 工作区名本地匹配，另接 `ctx.sessions.search` 做内容搜索（250ms 防抖）。
 - **窄栏**：侧栏折叠时退化成单列图标。
@@ -75,6 +76,8 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 | 面板 | `--dwc-panel-bg`、`--dwc-panel-bg-image`、`--dwc-panel-ring`、`--dwc-panel-shadow` | bg-base / 叠一层 bg-layer-1 / 1px 描边 / shadow-lv2 |
 
 `--dwc-card-size` / `--dwc-card-radius` / `--dwc-icon-size` 归设置页，皮肤别改（会和滑块打架）。
+设置页把「边框」关掉时，基座在 `.dwc-noborders` 上把 `--dwc-tile-ring` / `--dwc-tile-ring-hover` 设成 `none`，
+皮肤自己的描边也会一起消失；`--dwc-tile-ring-current`（当前工作区高亮）不受影响。
 
 **级联约定**：基座只用单类选择器、不用 `!important`。皮肤加 `html[data-dwc-api="1"]` 前缀就稳定压过，
 **不依赖两个插件谁先加载**。别用 `@layer`——宿主 CSS 未分层，进层的普通声明会被宿主压掉。
@@ -112,6 +115,7 @@ html[data-dwc-api="1"] .dwc-tile-paint {
   "order": ["<workspaceId>", "..."],
   "showNames": false,
   "scrollbars": "show",
+  "borders": "show",
   "cardSize": 76,
   "radius": 21,
   "iconSize": 26,

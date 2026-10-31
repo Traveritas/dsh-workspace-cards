@@ -731,6 +731,8 @@ window.__ModuleLoader__.load({
 .dwc-tile.is-drop .dwc-tile-ring {
   box-shadow: var(--dwc-tile-ring-current, inset 0 0 0 1.5px var(--dsw-alias-state-business-primary));
 }
+/* 边框开关：只关底边和悬停那层，打开中的高亮照旧 */
+.dwc-noborders { --dwc-tile-ring: none; --dwc-tile-ring-hover: none; }
 
 /* 皮肤绘制层：基座只留空位，不写背景；皮肤在这上面画动态底 / 纹理 / 光效 */
 .dwc-tile-paint,
@@ -1469,7 +1471,7 @@ window.__ModuleLoader__.load({
 
       const previewMetrics = cardMetrics(state);
       const preview = h('div', {
-        className: 'dwc-set-preview',
+        className: 'dwc-set-preview' + (state.borders === 'hide' ? ' dwc-noborders' : ''),
         style: {
           '--dwc-card-size': state.cardSize + 'px',
           '--dwc-card-radius': state.radius + '%',
@@ -1514,6 +1516,10 @@ window.__ModuleLoader__.load({
             { value: true, label: t('namesShow') },
             { value: false, label: t('namesHide') },
           ]),
+          chipRow('borders', t('borders'), [
+            { value: 'show', label: t('bordersShow') },
+            { value: 'hide', label: t('bordersHide') },
+          ]),
           chipRow('scrollbars', t('scrollbar'), [
             { value: 'show', label: t('scrollbarShow') },
             { value: 'hide', label: t('scrollbarHide') },
@@ -1527,6 +1533,7 @@ window.__ModuleLoader__.load({
               radius: LIMITS.radius.def,
               iconSize: LIMITS.iconSize.def,
               showNames: DEFAULT_STORE.showNames,
+              borders: DEFAULT_STORE.borders,
               scrollbars: DEFAULT_STORE.scrollbars,
             }),
           }, t('settingsReset'))));
@@ -2296,7 +2303,7 @@ window.__ModuleLoader__.load({
         '--dwc-hover-icon-lift': metrics.hoverLift + 'px',
       };
 
-      return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail') + (store.scrollbars === 'hide' ? ' dwc-nobars' : ''), style: rootStyle, ref: rootRef },
+      return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail') + (store.scrollbars === 'hide' ? ' dwc-nobars' : '') + (store.borders === 'hide' ? ' dwc-noborders' : ''), style: rootStyle, ref: rootRef },
         wide ? headerNode() : null,
         wide
           ? h('div', { className: 'dwc-stage', ref: stageRef },
