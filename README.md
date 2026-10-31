@@ -37,9 +37,9 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 
 ## 样式接口（皮肤插件用）
 
-> 从 0.2.0 起。下面这些是**承诺**；其它类名和 DOM 层级算内部实现，皮肤别依赖。
+> 从 0.2.0 起（0.2.1 把描边拆成独立一层）。下面这些是**承诺**；其它类名和 DOM 层级算内部实现，皮肤别依赖。
 
-**门控**：插件挂上挂 `html[data-dwc-api="1"]` + `html[data-dwc-version="0.2.0"]`，卸载时一起摘掉。
+**门控**：插件挂上挂 `html[data-dwc-api="1"]` + `html[data-dwc-version="0.2.1"]`，卸载时一起摘掉。
 皮肤的规则统一用 `html[data-dwc-api="1"]` 开头——基座没装、或将来接口不兼容，整段皮肤不生效，不会半残。
 
 **DOM**
@@ -48,6 +48,7 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 .dwc-grid                     网格容器
   .dwc-tile[data-ws-id]       卡片（button）
     .dwc-tile-paint           空绘制层：皮肤在这画动态底 / 纹理
+    .dwc-tile-ring            描边层（z-index 2）：独立一层，铺底盖不掉
     .dwc-tile-icon            图标
     .dwc-tile-name-wrap       名称
       .dwc-tile-name
@@ -64,7 +65,8 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 | 作用域 | 变量 | 默认 |
 | --- | --- | --- |
 | 卡片 | `--dwc-tile-bg` / `--dwc-tile-bg-hover` | `bg-layer-2` / `bg-layer-1` |
-| 卡片 | `--dwc-tile-ring` / `--dwc-tile-ring-hover` / `--dwc-tile-ring-current` | 1px 内描边 / 1px 描边 + 投影 / 1.5px 主题色 |
+| 卡片 | `--dwc-tile-ring` / `--dwc-tile-ring-hover` / `--dwc-tile-ring-current` | 1px 内描边 / 1px 描边 / 1.5px 主题色 |
+| 卡片 | `--dwc-tile-shadow-hover` | `shadow-lv1`（悬停的外投影，和描边分开） |
 | 卡片 | `--dwc-tile-label` / `-hover` / `-current`、`--dwc-focus-ring` | 次级文字 / 主文字 / 主题色 |
 | 角标 | `--dwc-badge-ring` / `-hover`、`--dwc-badge-size` | 跟随卡片底色 / 7px |
 | 角标 | `--dwc-badge-pending` / `-running` / `-done` | warn / business / success |
@@ -78,7 +80,7 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 **不依赖两个插件谁先加载**。别用 `@layer`——宿主 CSS 未分层，进层的普通声明会被宿主压掉。
 
 **画动态底**：给 `.dwc-tile-paint` 写背景和动画即可。它绝对定位、`pointer-events: none`、继承卡片圆角；
-内容层在它上面（图标 `z-index: 1`、角标 `2`），不会盖住文字。用不透明绘制层时，
+内容层在它上面（图标 `z-index: 1`、描边 `2`、角标 `3`），不会盖住文字。用不透明绘制层时，
 把 `--dwc-badge-ring` / `-hover` 设成绘制层边缘色，角标描边才切得干净。
 
 ```css

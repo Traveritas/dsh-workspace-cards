@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
 
     const PLUGIN_ID = 'dsh-workspace-cards';
     /* 样式接口版本：皮肤插件用 html[data-dwc-api] 门控，接口不兼容时整段不生效 */
-    const PLUGIN_VERSION = '0.2.0';
+    const PLUGIN_VERSION = '0.2.1';
     const SKIN_API = '1';
     const STORE_KEY = 'dsh.workspaceCards.v1';
     /* v1 → v2：名称默认改「仅悬停」；v2 → v3：圆角从像素改成占边长的百分比。 */
@@ -683,7 +683,6 @@ window.__ModuleLoader__.load({
   background: var(--dwc-tile-bg, var(--dsw-alias-bg-layer-2));
   /* 角标描边要跟卡片底同色；皮肤画了不透明底时，把 --dwc-badge-ring(-hover) 设成同一色 */
   --dwc-tile-fill: var(--dwc-badge-ring, var(--dsw-alias-bg-layer-2));
-  box-shadow: var(--dwc-tile-ring, inset 0 0 0 1px var(--dsw-alias-border-l1));
   color: var(--dwc-tile-label, var(--dsw-alias-label-secondary));
   cursor: pointer;
   overflow: hidden;
@@ -695,15 +694,31 @@ window.__ModuleLoader__.load({
   background: var(--dwc-tile-bg-hover, var(--dsw-alias-bg-layer-1));
   --dwc-tile-fill: var(--dwc-badge-ring-hover, var(--dsw-alias-bg-layer-1));
   color: var(--dwc-tile-label-hover, var(--dsw-alias-label-primary));
-  box-shadow: var(--dwc-tile-ring-hover, inset 0 0 0 1px var(--dsw-alias-border-l2), var(--dsw-shadow-lv1));
+  box-shadow: var(--dwc-tile-shadow-hover, var(--dsw-shadow-lv1));
 }
 .dwc-tile:focus-visible { outline: 2px solid var(--dwc-focus-ring, var(--dsw-alias-state-business-primary)); outline-offset: 1px; }
 .dwc-tile.is-current {
   color: var(--dwc-tile-label-current, var(--dsw-alias-label-primary));
-  box-shadow: var(--dwc-tile-ring-current, inset 0 0 0 1.5px var(--dsw-alias-state-business-primary));
 }
 .dwc-tile.is-dragging { opacity: 0.45; }
-.dwc-tile.is-drop { box-shadow: var(--dwc-tile-ring-current, inset 0 0 0 1.5px var(--dsw-alias-state-business-primary)); }
+
+/* 描边单独一层：内阴影按绘制顺序在子元素下面，皮肤一铺不透明底就会被盖掉；
+   放到 z-index 2 的兄弟节点上，谁铺底都压不住它 */
+.dwc-tile-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: var(--dwc-tile-ring, inset 0 0 0 1px var(--dsw-alias-border-l1));
+}
+.dwc-tile:hover .dwc-tile-ring {
+  box-shadow: var(--dwc-tile-ring-hover, inset 0 0 0 1px var(--dsw-alias-border-l2));
+}
+.dwc-tile.is-current .dwc-tile-ring,
+.dwc-tile.is-drop .dwc-tile-ring {
+  box-shadow: var(--dwc-tile-ring-current, inset 0 0 0 1.5px var(--dsw-alias-state-business-primary));
+}
 
 /* 皮肤绘制层：基座只留空位，不写背景；皮肤在这上面画动态底 / 纹理 / 光效 */
 .dwc-tile-paint,
@@ -747,7 +762,7 @@ window.__ModuleLoader__.load({
 .dwc-tile.is-names-hover:hover .dwc-tile-icon,
 .dwc-tile.is-names-hover:focus-visible .dwc-tile-icon { transform: translateY(var(--dwc-hover-icon-lift, 0px)) scale(var(--dwc-hover-icon-scale, 1)); }
 
-.dwc-badge { position: absolute; z-index: 2; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: var(--dwc-badge-size, 7px); height: var(--dwc-badge-size, 7px); border-radius: 50%; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
+.dwc-badge { position: absolute; z-index: 3; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: var(--dwc-badge-size, 7px); height: var(--dwc-badge-size, 7px); border-radius: 50%; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
 .dwc-badge[data-kind="pending"] { background: var(--dwc-badge-pending, var(--dsw-alias-state-warn-primary)); }
 .dwc-badge[data-kind="running"] { background: var(--dwc-badge-running, var(--dsw-alias-state-business-primary)); animation: dwc-pulse 1.7s ease-in-out infinite; }
 .dwc-badge[data-kind="done"] { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dwc-badge-done, var(--dsw-alias-state-success-secondary)), 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
@@ -1458,6 +1473,7 @@ window.__ModuleLoader__.load({
         'aria-hidden': 'true',
       },
       h('span', { className: 'dwc-tile-paint', 'aria-hidden': 'true' }),
+      h('span', { className: 'dwc-tile-ring', 'aria-hidden': 'true' }),
       h('span', { className: 'dwc-tile-icon' },
         h('span', {
           className: 'dwc-glyph dwc-glyph-char',
@@ -2065,6 +2081,7 @@ window.__ModuleLoader__.load({
             onDragEnd: () => { setDragId(null); setDropId(null); },
           },
           h('span', { className: 'dwc-tile-paint', 'aria-hidden': 'true' }),
+          h('span', { className: 'dwc-tile-ring', 'aria-hidden': 'true' }),
           h('span', { className: 'dwc-tile-icon' },
             h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: store.iconSize, title: ws.title, glyph: monos[cardIndex] })),
           h('span', { className: 'dwc-tile-name-wrap' },
