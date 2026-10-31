@@ -266,8 +266,8 @@ window.__ModuleLoader__.load({
       pinnedHeight: { min: 124, max: 520, step: 4, def: 192, unit: ' px' },
     };
 
-    /* 不管面板拖多高，底下至少留这么多给「分隔条 12 + 网格 138」，与 CSS 的 max-height 对齐 */
-    const GRID_MIN = 150;
+    /* 面板上外边距 2 + 分隔条 12 + 网格上内边距 4：下拖到底时网格正好剩一行完整卡片 */
+    const GRID_RESERVE = 18;
 
     const DEFAULT_STORE = {
       icons: {},
@@ -683,6 +683,21 @@ window.__ModuleLoader__.load({
   padding: 4px 2px 16px;
   background: var(--dwc-grid-bg, transparent);
 }
+/* 滚动区上下渐隐：只在那个方向还有内容时才露，静止时不动卡片的边 */
+/* 渐隐长度按视口比例收：网格被拖到只剩一行时，14px 会把整张卡啃成鬼影 */
+.dwc-grid { --dwc-fade: clamp(6px, 5%, 14px); }
+.dwc-grid.is-fade-top.is-fade-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--dwc-fade), #000 calc(100% - var(--dwc-fade)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--dwc-fade), #000 calc(100% - var(--dwc-fade)), transparent);
+}
+.dwc-grid.is-fade-top:not(.is-fade-bottom) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--dwc-fade), #000 100%);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--dwc-fade), #000 100%);
+}
+.dwc-grid.is-fade-bottom:not(.is-fade-top) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - var(--dwc-fade)), transparent);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - var(--dwc-fade)), transparent);
+}
 .dwc-grid, .dwc-sr, .dwc-panel-body { animation: dwc-in 160ms ease both; }
 @keyframes dwc-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 
@@ -837,8 +852,8 @@ window.__ModuleLoader__.load({
 .dwc-panel {
   flex: 0 0 auto;
   height: var(--dwc-pinned-h, 192px);
-  /* 窗口矮的时候别让面板把网格吃光 */
-  max-height: calc(100% - 150px);
+  /* 拖到极限时，网格底下正好剩一行完整卡片 */
+  max-height: calc(100% - var(--dwc-card-size, 76px) - 18px);
   margin: 2px 2px 0;
   overflow: hidden;
   border-radius: var(--dwc-panel-radius, 16px);
@@ -1604,6 +1619,7 @@ window.__ModuleLoader__.load({
       const [splitDrag, setSplitDrag] = useState(false);
       const [splitLive, setSplitLive] = useState(null);
       const rootRef = useRef(null);
+      const gridRef = useRef(null);
       const splitDragRef = useRef(null);
       const splitLiveRef = useRef(null);
 
@@ -1796,6 +1812,32 @@ window.__ModuleLoader__.load({
 
       /* 拖动时用本地值，松手才落盘——否则每个 pointermove 都写一次 localStorage */
       const pinnedHeight = splitLive !== null ? splitLive : store.pinnedHeight;
+      const cardSize = store.cardSize;
+
+      /* 网格能否再往上 / 往下滚：顶到底时对应那条渐隐就收掉 */
+      const [scrollEdge, setScrollEdge] = useState({ top: false, bottom: false });
+      const syncScrollEdge = useCallback(() => {
+        const el = gridRef.current;
+        if (!el) {
+          setScrollEdge((prev) => (prev.top || prev.bottom ? { top: false, bottom: false } : prev));
+          return;
+        }
+        const top = el.scrollTop > 1;
+        const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+        setScrollEdge((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }));
+      }, []);
+
+      useLayoutEffect(() => {
+        syncScrollEdge();
+      }, [syncScrollEdge, pinnedHeight, store.cardSize, cards.length, searchOpen]);
+
+      useEffect(() => {
+        const el = gridRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const observer = new ResizeObserver(syncScrollEdge);
+        observer.observe(el);
+        return () => observer.disconnect();
+      }, [syncScrollEdge, searchOpen]);
 
       const beginSplit = useCallback((event) => {
         if (event.button !== 0) return;
@@ -1806,10 +1848,10 @@ window.__ModuleLoader__.load({
         splitDragRef.current = {
           y: event.clientY,
           h: pinnedHeight,
-          maxH: Math.max(LIMITS.pinnedHeight.min + 48, box.height - GRID_MIN),
+          maxH: Math.max(LIMITS.pinnedHeight.min + 48, box.height - cardSize - GRID_RESERVE),
         };
         setSplitDrag(true);
-      }, [pinnedHeight]);
+      }, [pinnedHeight, cardSize]);
 
       useEffect(() => {
         if (!splitDrag) return undefined;
@@ -2126,7 +2168,14 @@ window.__ModuleLoader__.load({
           card.badge ? h('i', { className: 'dwc-badge', 'data-kind': card.badge }) : null);
         });
 
-        return h('div', { className: 'dwc-grid', role: 'grid', 'aria-label': t('workspaces'), onKeyDown: moveFocus }, tiles);
+        return h('div', {
+          className: 'dwc-grid' + (scrollEdge.top ? ' is-fade-top' : '') + (scrollEdge.bottom ? ' is-fade-bottom' : ''),
+          role: 'grid',
+          'aria-label': t('workspaces'),
+          ref: gridRef,
+          onScroll: syncScrollEdge,
+          onKeyDown: moveFocus,
+        }, tiles);
       }
 
       /* ── 展开的卡片 ── */
