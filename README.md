@@ -1,5 +1,7 @@
 # dsh-workspace-cards
 
+同系列 · [AveritA 的 DSH 插件目录](https://github.com/Traveritas/averita-s-dsh-plugins)
+
 AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**，当前工作区**常驻**在网格上方；点任意卡片把它换到常驻位。右上角「视图选项」可在两种视口间切换：**工作区优先**（卡片常驻、会话浮窗）与**会话栏优先**（会话铺满、卡片收进底部按钮）。
 
 > 浏览器半（`client.js`）以 priority `-1` 接管官方 `sidebar.workspaces` 座位；
