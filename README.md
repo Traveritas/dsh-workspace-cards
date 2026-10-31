@@ -10,6 +10,10 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 | --- | --- | --- |
 | <img src="docs/grid.png" width="220" alt="网格"> | <img src="docs/panel.png" width="220" alt="展开的卡片"> | <img src="docs/dark.png" width="220" alt="深色"> |
 
+左起：网格、展开的卡片、深色下的展开卡片。下面这段是实机演示——首字母字标、悬停出名称、点卡片展开、点标题收回：
+
+<img src="docs/demo.gif" width="260" alt="演示：网格 / 悬停名称 / 展开卡片 / 收回">
+
 ## 形态
 
 - **网格**：每张卡片固定为正方形（默认 76×76），列数按栏宽与卡片大小自动排（`auto-fill`），一行排不满时整行**居中**；
@@ -148,8 +152,9 @@ html[data-dwc-api="1"] .dwc-tile-paint {
 - **未分组会话**：工作区被删后落进「未分组」的会话不显示，因为网格只遍历已登记工作区。
 - **第三方行内扩展**：替换座位后，别的插件挂在 `sidebar.session.row.*` / `sidebar.workspaces.session.*`
   上的东西不会渲染（slot 的「声明即认领」规则）。当前 profile 里没有这类插件。
-- **字标**：分段取首字母（`dsh-theme` → `dt`），单段取前两个字（`gaotie` → `ga`）；
-  同屏撞车时自动加长到 3 位（`gaotie` → `gao`，`gonglingzhishou-aii` → `gai`）。
+- **字标**：默认只取首字母（`dsh-theme` → `d`）；同屏撞车时才加长——
+  两位按「分段取首字母 / 单段取前两字」（`dsh-theme` → `dt`，`gaotie` → `ga`），
+  仍重复再补到三位（`gaotie` → `gao`，`gonglingzhishou-aii` → `gai`）。
 
 ## 安装 / 卸载
 

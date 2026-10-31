@@ -373,43 +373,60 @@ window.__ModuleLoader__.load({
 
     /* ────────────────────────── 小工具 ────────────────────────── */
 
-    /** 两段式字标：分段取首字母（dsh-theme → dt），单段取前两个字（gaotie → ga）。 */
+    /** 字标默认只取首字母（dsh-theme → d）；同屏撞车时再扩成两位 / 三位。 */
     function monogramOf(text) {
-      const parts = String(text || '').trim().split(/[\s\-_./]+/).filter(Boolean);
+      const parts = splitTitle(text);
       if (!parts.length) return { text: '·', count: 1 };
-      const head = Array.from(parts[0]);
-      if (parts.length === 1) {
-        const chars = head.slice(0, 2).join('');
-        return { text: chars || '·', count: chars.length };
-      }
-      const second = Array.from(parts[1])[0] || '';
-      const text2 = (head[0] || '') + second;
-      return { text: text2 || '·', count: text2.length };
+      const first = Array.from(parts[0])[0] || '·';
+      return { text: first, count: 1 };
     }
 
-    /** 同一屏内撞车时把字标加长到 3 位，保证两两可辨。 */
+    function splitTitle(text) {
+      return String(text || '').trim().split(/[\s\-_./]+/).filter(Boolean);
+    }
+
+    /** 两位字标：分段取首字母（dsh-theme → dt），单段取前两个字（gaotie → ga）。 */
+    function monogramPairOf(text) {
+      const parts = splitTitle(text);
+      if (!parts.length) return '·';
+      const head = Array.from(parts[0]);
+      if (parts.length === 1) return head.slice(0, 2).join('') || '·';
+      return (head[0] || '·') + (Array.from(parts[1])[0] || '');
+    }
+
+    /** 只有撞车的字标才加长：先换两位，仍重复再补到三位。 */
     function monogramSet(titles) {
       const list = titles.map((title) => monogramOf(title));
-      const groups = new Map();
-      list.forEach((mono, index) => {
-        if (!groups.has(mono.text)) groups.set(mono.text, []);
-        groups.get(mono.text).push(index);
-      });
-      groups.forEach((indexes, text) => {
-        if (indexes.length < 2) return;
-        indexes.forEach((index) => {
-          const parts = String(titles[index] || '').trim().split(/[\s\-_./]+/).filter(Boolean);
-          let longer = text;
+      const candidates = [
+        (title) => monogramPairOf(title),
+        (title, current) => {
+          const parts = splitTitle(title);
           if (parts.length > 1) {
             const tail = Array.from(parts[parts.length - 1]);
-            longer = text + (tail[1] || tail[0] || '');
-          } else {
-            longer = Array.from(parts[0] || '').slice(0, 3).join('');
+            return current + (tail[1] || tail[0] || '');
           }
-          const chars = Array.from(longer || text);
-          list[index] = { text: chars.join(''), count: chars.length };
+          return Array.from(parts[0] || '').slice(0, 3).join('');
+        },
+      ];
+      for (const pick of candidates) {
+        const groups = new Map();
+        list.forEach((mono, index) => {
+          if (!groups.has(mono.text)) groups.set(mono.text, []);
+          groups.get(mono.text).push(index);
         });
-      });
+        let changed = false;
+        groups.forEach((indexes) => {
+          if (indexes.length < 2) return;
+          indexes.forEach((index) => {
+            const next = pick(titles[index], list[index].text);
+            if (!next || next === list[index].text) return;
+            const chars = Array.from(next);
+            list[index] = { text: chars.join(''), count: chars.length };
+            changed = true;
+          });
+        });
+        if (!changed) break;
+      }
       return list;
     }
 
