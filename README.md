@@ -233,10 +233,18 @@ html[data-dwc-api="1"] .dwc-tile-paint {
 
 ## 安装 / 卸载
 
-```bash
-# 安装（或在 DSH「设置 → 插件」里给绝对路径）
-dsh plugin --profile desktop add link:D:\Documents\HTA\My Projects\dsh-workspace-cards
+先把仓库克隆到任意目录（也可以直接在插件管理器里选已有的目录）：
+
+```powershell
+git clone --depth 1 https://github.com/Traveritas/dsh-workspace-cards.git D:\dsh\dsh-workspace-cards
 ```
+
+然后 **设置 → 插件 → 添加插件**，spec 填这个目录的**绝对路径**（例：`D:\dsh\dsh-workspace-cards`）。
+管理器会把它 `pnpm link` 进 profile 并加入 `dsh.profile.bundles`；看返回的 `application`：`applied` 即生效，`restart-required` 就完全退出桌面端再开。
+
+> 桌面端的 `desktop` profile 由 Electron 独占，`dsh plugin --profile desktop ...` 会被拒：
+> `profile "desktop" is managed exclusively by the Electron application`。所以桌面端只走应用内插件管理器；
+> 其它 profile 才用得上 `dsh plugin --profile <名字> add "link:<绝对路径>"`（路径带空格时要引号）。
 
 卸载后官方工作区列表原样回来（本插件不写官方任何状态）；`~/.dsh/workspace-icons` 里的文件不会删除。
 
