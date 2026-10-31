@@ -17,6 +17,10 @@ window.__ModuleLoader__.load({
 
     const PLUGIN_ID = 'dsh-workspace-cards';
     const STORE_KEY = 'dsh.workspaceCards.v1';
+    /* v1 → v2：名称默认改「仅悬停」；v2 → v3：圆角从像素改成占边长的百分比。 */
+    const STORE_VERSION = 3;
+    const ICON_ROUTE = '/dsh-workspace-cards/icons';
+    const ICON_POLL_MS = 2000;
     const SERIF = '"Source Serif 4", "Songti SC", "Noto Serif SC", serif';
     const NOOP_HOOK = () => undefined;
     const EXPAND_MS = 240;
@@ -35,6 +39,19 @@ window.__ModuleLoader__.load({
       names: '名称',
       namesShow: '常显',
       namesHide: '仅悬停',
+      scrollbar: '滚动条',
+      scrollbarShow: '显示',
+      scrollbarHide: '隐藏',
+      settingsTitle: '工作区卡片',
+      settingsSub: '卡片与显示',
+      settingsLayout: '布局',
+      settingsLayoutHint: '列数随侧栏宽度和卡片大小自动排列，整行居中；圆角 0% 是方块、50% 是整圆。拖动即时生效。',
+      settingsDisplay: '显示',
+      settingsPreview: '预览',
+      cardSize: '卡片大小',
+      cardRadius: '圆角',
+      cardIcon: '图标大小',
+      settingsReset: '恢复默认',
       sort: '排序',
       sortManual: '手动',
       sortRecent: '最近活跃',
@@ -44,7 +61,6 @@ window.__ModuleLoader__.load({
       archiveOnly: '仅显示已归档',
       untitled: '未命名',
       emptyWorkspace: '还没有会话',
-      addHint: '添加工作区…',
       expandMore: '展开其余 {n} 个会话',
       noMatch: '没有匹配的会话',
       searchPlaceholder: '搜索会话名称',
@@ -56,6 +72,18 @@ window.__ModuleLoader__.load({
       iconSvg: '自定义 SVG',
       iconCharHint: '一个字、一个字母或一个 emoji',
       pickFile: '选择 SVG 文件…',
+      agentDraw: '让 agent 画',
+      agentCopied: '已复制',
+      fileIcon: '文件图标',
+      fileIconNow: '当前使用这个文件图标',
+      fileIconOverridden: '本地自定义优先，文件图标被覆盖',
+      fileIconPath: 'agent 存到：{path}',
+      fileIconNoDir: 'Host 半未就绪；装好或更新后重启 DSH',
+      fileIconLoad: '载入编辑',
+      fileIconUse: '改用文件图标',
+      fileIconRefresh: '刷新',
+      fileIconManaged: '删掉这个文件即可移除文件图标',
+      clearLocal: '清除本地图标',
       apply: '应用',
       save: '保存',
       cancel: '取消',
@@ -89,6 +117,19 @@ window.__ModuleLoader__.load({
       names: 'Names',
       namesShow: 'Always',
       namesHide: 'On hover',
+      scrollbar: 'Scrollbar',
+      scrollbarShow: 'Show',
+      scrollbarHide: 'Hide',
+      settingsTitle: 'Workspace cards',
+      settingsSub: 'Cards & display',
+      settingsLayout: 'Layout',
+      settingsLayoutHint: 'Columns follow the sidebar width and card size; rows stay centered. Radius 0% is a square, 50% a full circle.',
+      settingsDisplay: 'Display',
+      settingsPreview: 'Preview',
+      cardSize: 'Card size',
+      cardRadius: 'Radius',
+      cardIcon: 'Icon size',
+      settingsReset: 'Reset',
       sort: 'Sort',
       sortManual: 'Manual',
       sortRecent: 'Recent',
@@ -98,7 +139,6 @@ window.__ModuleLoader__.load({
       archiveOnly: 'Archived only',
       untitled: 'Untitled',
       emptyWorkspace: 'No sessions yet',
-      addHint: 'Add a workspace…',
       expandMore: 'Show {n} more sessions',
       noMatch: 'No matching sessions',
       searchPlaceholder: 'Search session titles',
@@ -110,6 +150,18 @@ window.__ModuleLoader__.load({
       iconSvg: 'Custom SVG',
       iconCharHint: 'One character, letter, or emoji',
       pickFile: 'Choose SVG file…',
+      agentDraw: 'Let agent draw',
+      agentCopied: 'Copied',
+      fileIcon: 'File icon',
+      fileIconNow: 'Using this file icon',
+      fileIconOverridden: 'Local custom icon wins; file icon is hidden',
+      fileIconPath: 'Agent saves to: {path}',
+      fileIconNoDir: 'Host half not ready; install or update, then restart DSH',
+      fileIconLoad: 'Load into editor',
+      fileIconUse: 'Use file icon',
+      fileIconRefresh: 'Refresh',
+      fileIconManaged: 'Delete the file to remove this icon',
+      clearLocal: 'Clear local icon',
       apply: 'Apply',
       save: 'Save',
       cancel: 'Cancel',
@@ -135,37 +187,158 @@ window.__ModuleLoader__.load({
       return String(template).replace(/\{(\w+)\}/g, (_, key) => (vars && vars[key] !== undefined ? String(vars[key]) : ''));
     }
 
+    /** 文件图标的落点：<图标目录>/<workspaceId>.svg，按宿主目录的分隔符拼。 */
+    function iconPathOf(dir, id) {
+      if (!dir || !id) return '';
+      const sep = String(dir).indexOf('\\') >= 0 ? '\\' : '/';
+      return String(dir).replace(/[\\/]+$/, '') + sep + String(id) + '.svg';
+    }
+
+    /** 复制给 agent 的提示词：画法 + 工作区信息 + 真实存放路径。 */
+    function agentPromptOf(ws, file) {
+      const title = (ws && ws.title) || '这个工作区';
+      const workspacePath = (ws && ws.path) || '（未提供）';
+      const workspaceId = (ws && ws.workspaceId) || '（未知）';
+      return [
+        `给 DSH 工作区「${title}」画一个 24×24 的线性图标，并直接存成文件。`,
+        '',
+        `工作区：${title}`,
+        `工作区路径：${workspacePath}`,
+        `workspaceId：${workspaceId}`,
+        `存放位置：${file || '（图标目录未就绪）'}`,
+        '',
+        '画法：',
+        '- viewBox="0 0 24 24"；fill="none"；stroke="currentColor"；stroke-width="1.5"；',
+        '  stroke-linecap="round"；stroke-linejoin="round"。',
+        '- 主体控制在 4–20 的坐标范围内，视觉重心放在 (12,12)。',
+        '- 从工作区名或路径取一个明确的意象；轮廓简洁，16px 下仍能辨认。',
+        '- 最多 5 条 path；不要文字、渐变、滤镜、位图、外链或 <style>。',
+        '- 直接写入上面的文件（UTF-8；目录不存在就创建），不要只贴代码，也不要改插件代码。',
+        '- 写完后只回复文件路径和一句图标说明。',
+        '',
+        '如果当前沙箱不允许写这个路径，请告诉我原因，并把完整 <svg> 代码贴出来作为退路。',
+      ].join('\n');
+    }
+
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (error) {
+        /* 权限或焦点问题，走下面的兜底 */
+      }
+      try {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.select();
+        const ok = document.execCommand('copy');
+        area.remove();
+        return ok;
+      } catch (error) {
+        return false;
+      }
+    }
+
     /* ────────────────────────── 存储 ────────────────────────── */
+
+    /** 卡片相关数值的范围；设置页的滑块和读盘时的夹取共用这一份。 */
+    const LIMITS = {
+      cardSize: { min: 56, max: 120, step: 2, def: 76, unit: ' px' },
+      /* 圆角按边长百分比：0% = 方块，50% = 整圆 */
+      radius: { min: 0, max: 50, step: 1, def: 21, unit: '%' },
+      iconSize: { min: 14, max: 40, step: 1, def: 26, unit: ' px' },
+    };
 
     const DEFAULT_STORE = {
       icons: {},
       order: [],
-      showNames: true,
+      showNames: false,
+      scrollbars: 'show',
+      cardSize: LIMITS.cardSize.def,
+      radius: LIMITS.radius.def,
+      iconSize: LIMITS.iconSize.def,
       sort: 'manual',
       archived: 'hide',
     };
 
+    function clampNumber(raw, limit) {
+      const value = Math.round(Number(raw));
+      if (!Number.isFinite(value)) return limit.def;
+      return Math.min(limit.max, Math.max(limit.min, value));
+    }
+
+    function normalizeStore(raw) {
+      const src = raw && typeof raw === 'object' ? raw : {};
+      const version = Number.isFinite(Number(src.v)) ? Number(src.v) : 1;
+      const cardSize = clampNumber(src.cardSize, LIMITS.cardSize);
+      /* v3 起 radius 存百分比；更早的存档是像素，按当前边长换算。 */
+      const legacyRadius = Number.isFinite(Number(src.radius))
+        ? Math.round((Number(src.radius) / cardSize) * 100)
+        : LIMITS.radius.def;
+      return {
+        ...DEFAULT_STORE,
+        ...src,
+        v: STORE_VERSION,
+        icons: src.icons && typeof src.icons === 'object' ? src.icons : {},
+        order: Array.isArray(src.order) ? src.order : [],
+        showNames: version >= 2 ? src.showNames === true : DEFAULT_STORE.showNames,
+        scrollbars: src.scrollbars === 'hide' ? 'hide' : 'show',
+        cardSize,
+        radius: version >= 3 ? clampNumber(src.radius, LIMITS.radius) : clampNumber(legacyRadius, LIMITS.radius),
+        iconSize: clampNumber(src.iconSize, LIMITS.iconSize),
+      };
+    }
+
+    /** 边长 / 圆角 / 图标 → 悬停名称的站位，以及图标要不要上移 / 缩一点给名字让位。 */
+    function cardMetrics(store) {
+      const size = store.cardSize;
+      const radiusPx = (size * store.radius) / 100;
+      const nameBottom = Math.max(5, Math.round(radiusPx * 0.5));
+      const nameInset = Math.max(6, Math.round(radiusPx * 0.35));
+      const badgeInset = Math.max(8, Math.round(radiusPx * 0.4));
+
+      /* 悬停时名字从底部浮出：名字上方那块（卡顶留 6px）是图标能待的地方。
+         放得下就只上移；放不下再等比缩小。 */
+      const padTop = 6;
+      const nameLine = 12;
+      const nameTop = size - nameBottom - nameLine;
+      const free = Math.max(8, nameTop - padTop);
+      const icon = Math.max(1, store.iconSize);
+      const hoverScale = Math.min(1, Math.max(0.45, free / icon));
+      let lift = 0;
+      if (icon > free) {
+        lift = (padTop + nameTop) / 2 - size / 2;
+      } else {
+        lift = Math.min(0, nameTop - (size + icon) / 2);
+      }
+      return { nameBottom, nameInset, badgeInset, hoverScale, hoverLift: Math.round(lift) };
+    }
+
     function readStore() {
       try {
-        const raw = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
-        if (!raw || typeof raw !== 'object') return { ...DEFAULT_STORE, icons: {}, order: [] };
-        return {
-          ...DEFAULT_STORE,
-          ...raw,
-          icons: raw.icons && typeof raw.icons === 'object' ? raw.icons : {},
-          order: Array.isArray(raw.order) ? raw.order : [],
-        };
+        return normalizeStore(JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null'));
       } catch (error) {
-        return { ...DEFAULT_STORE, icons: {}, order: [] };
+        return normalizeStore(null);
       }
     }
 
     function writeStore(value) {
       try {
         window.localStorage.setItem(STORE_KEY, JSON.stringify({
+          v: STORE_VERSION,
           icons: value.icons,
           order: value.order,
           showNames: value.showNames,
+          scrollbars: value.scrollbars,
+          cardSize: value.cardSize,
+          radius: value.radius,
+          iconSize: value.iconSize,
           sort: value.sort,
           archived: value.archived,
         }));
@@ -173,6 +346,27 @@ window.__ModuleLoader__.load({
         /* 隐私模式下 localStorage 不可写，退化成内存态即可 */
       }
     }
+
+    /** 侧栏和设置页共用同一份 store：任一处改了，另一处即时跟着重渲染。 */
+    const storeHub = {
+      state: null,
+      listeners: new Set(),
+      get() {
+        if (!this.state) this.state = readStore();
+        return this.state;
+      },
+      set(patch) {
+        const next = normalizeStore({ ...this.get(), ...patch });
+        this.state = next;
+        writeStore(next);
+        this.listeners.forEach((fn) => { try { fn(next); } catch (error) { /* 单个订阅者出错不影响其它 */ } });
+        return next;
+      },
+      subscribe(fn) {
+        this.listeners.add(fn);
+        return () => { this.listeners.delete(fn); };
+      },
+    };
 
     /* ────────────────────────── 小工具 ────────────────────────── */
 
@@ -281,7 +475,7 @@ window.__ModuleLoader__.load({
       folder: ['M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'],
       code: ['m8 8-4 4 4 4', 'm16 8 4 4-4 4'],
       terminal: ['M3 5h18v14H3Z', 'm7 10 2 2-2 2', 'M12 14h4'],
-      book: ['M5 4h6a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H5Z', 'M19 4h-2a3 3 0 0 0-3 3v13a3 3 0 0 1 3-3h2Z'],
+      book: ['M4 4h4a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H4Z', 'M20 4h-4a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h5Z'],
       chart: ['M4 20V4', 'M4 20h16', 'M8 16v-4', 'M12 16V8', 'M16 16v-6'],
       database: ['M12 4c4 0 7 1.3 7 3s-3 3-7 3-7-1.3-7-3 3-3 7-3Z', 'M5 7v10c0 1.7 3 3 7 3s7-1.3 7-3V7'],
       robot: ['M8 8h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3Z', 'M12 4v4', 'M9.5 13h.01', 'M14.5 13h.01'],
@@ -293,9 +487,29 @@ window.__ModuleLoader__.load({
       flask: ['M9 3h6', 'M10 3v6l-5 8a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-8V3'],
       flag: ['M6 3v18', 'M6 4h11l-2 4 2 4H6'],
       planet: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M5 17c8 3 14-1 14-1'],
+      home: ['M3.5 11 12 4l8.5 7', 'M6 9.5V20h12V9.5', 'M10 20v-5h4v5'],
+      chat: ['M5 5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z', 'M8 10h.01', 'M12 10h.01', 'M16 10h.01'],
+      mail: ['M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z', 'm3 7 9 6 9-6'],
+      calendar: ['M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z', 'M4 10h16', 'M8 3.5V6', 'M16 3.5V6'],
+      clock: ['M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z', 'M12 8v4.5l3 1.8'],
+      file: ['M6 4h7l4 4v12H6Z', 'M13 4v4h4', 'M9 12h5', 'M9 15.5h5'],
+      image: ['M4 5h16v14H4Z', 'M5 18l5-5 3.5 3.5L17 12l3 3', 'M9 9h.01'],
+      music: ['M8 16V6l10-2v10', 'M8 16a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z', 'M18 14a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z'],
+      video: ['M3 7h12v10H3Z', 'm15 10 6-3v10l-6-3Z'],
+      gamepad: ['M6 9h12a4 4 0 0 1 3.6 5.8l-1.2 2.4A2.5 2.5 0 0 1 16 18l-1.5-2h-5L8 18a2.5 2.5 0 0 1-4.4-1.8l-1.2-2.4A4 4 0 0 1 6 9Z', 'M8 11v4', 'M6 13h4', 'M15.5 12h.01', 'M18 14h.01'],
+      globe: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M3 12h18', 'M12 3c3.5 3.5 3.5 14.5 0 18', 'M12 3c-3.5 3.5-3.5 14.5 0 18'],
+      map: ['m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2Z', 'M9 4v14', 'M15 6v14'],
+      bulb: ['M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3Z', 'M9.5 20h5'],
+      shield: ['M12 3 20 6v6c0 5-3.3 7.6-8 9-4.7-1.4-8-4-8-9V6Z', 'm8.5 12 2.5 2.5 4.5-4.5'],
+      tag: ['M4 4h7l9 9-7 7-9-9Z', 'M8 8h.01'],
+      cloud: ['M7 18h10a4 4 0 0 0 .6-7.9A6 6 0 0 0 6 9.5 4.5 4.5 0 0 0 7 18Z'],
+      sun: ['M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z', 'M12 2v2', 'M12 20v2', 'M2 12h2', 'M20 12h2', 'm5 5 1.4 1.4', 'm17.6 17.6 1.4 1.4', 'm19 5-1.4 1.4', 'm6.4 17.6-1.4 1.4'],
+      moon: ['M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z'],
+      heart: ['M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10Z'],
+      link: ['M10 14a4 4 0 0 1 0-5.7l3-3a4 4 0 0 1 5.7 5.7l-2 2', 'M14 10a4 4 0 0 1 0 5.7l-3 3a4 4 0 0 1-5.7-5.7l2-2'],
     };
 
-    const LIB_ICONS = ['folder', 'code', 'terminal', 'book', 'chart', 'database', 'robot', 'spark', 'leaf', 'mountain', 'cube', 'wave', 'flask', 'flag', 'planet', 'pen'];
+    const LIB_ICONS = ['folder', 'code', 'terminal', 'book', 'chart', 'database', 'robot', 'spark', 'leaf', 'mountain', 'cube', 'wave', 'flask', 'flag', 'planet', 'pen', 'home', 'chat', 'mail', 'calendar', 'clock', 'file', 'image', 'music', 'video', 'gamepad', 'globe', 'map', 'bulb', 'shield', 'tag', 'cloud', 'sun', 'moon', 'heart', 'link'];
 
     function Icon(props) {
       const paths = PATHS[props.name] || PATHS.folder;
@@ -346,13 +560,19 @@ window.__ModuleLoader__.load({
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  padding: 0 4px;
+  /* 官方侧栏的 regionArea 用 margin-right: -inline-padding 把右边界拉到栏边
+     （给滚动条让位），挂进去的内容会比左边界多出 12px；这里补回右侧内边距，
+     卡片和标题行才会在栏内左右等距。 */
+  padding: 0 calc(4px + var(--dsh-sidebar-inline-padding, 12px)) 0 4px;
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
 .dwc-root *, .dwc-root *::before, .dwc-root *::after { box-sizing: border-box; }
+/* 视图选项「滚动条 → 隐藏」：只关显示，滚轮 / 触控板 / 键盘照常滚 */
+.dwc-root.dwc-nobars, .dwc-root.dwc-nobars * { scrollbar-width: none; }
+.dwc-root.dwc-nobars::-webkit-scrollbar, .dwc-root.dwc-nobars *::-webkit-scrollbar { display: none; }
 
 .dwc-head {
   display: flex;
@@ -415,7 +635,8 @@ window.__ModuleLoader__.load({
   inset: 0;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, var(--dwc-card-size, 76px));
+  justify-content: center;
   gap: 8px;
   align-content: start;
   padding: 4px 2px 16px;
@@ -427,7 +648,7 @@ window.__ModuleLoader__.load({
 .dwc-tile {
   position: relative;
   width: 100%;
-  height: 76px;
+  height: var(--dwc-card-size, 76px);
   padding: 6px 4px;
   display: flex;
   flex-direction: column;
@@ -435,16 +656,22 @@ window.__ModuleLoader__.load({
   justify-content: center;
   gap: 4px;
   border: 0;
-  border-radius: 16px;
+  /* 应用默认是 superellipse 圆角；卡片这里用正圆，50% 才是真正的整圆 */
+  corner-shape: round;
+  border-radius: var(--dwc-card-radius, 21%);
   background: var(--dsw-alias-bg-layer-2);
+  /* 卡片当前底色：角标描边用这个色，压在图标上也能切出干净的边 */
+  --dwc-tile-fill: var(--dsw-alias-bg-layer-2);
   box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
+  overflow: hidden;
   transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease, border-radius 180ms ease;
 }
 .dwc-tile:hover {
   transform: translateY(-1px);
   background: var(--dsw-alias-bg-layer-1);
+  --dwc-tile-fill: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-primary);
   box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2), var(--dsw-shadow-lv1);
 }
@@ -455,9 +682,8 @@ window.__ModuleLoader__.load({
 }
 .dwc-tile.is-dragging { opacity: 0.45; }
 .dwc-tile.is-drop { box-shadow: inset 0 0 0 1.5px var(--dsw-alias-state-business-primary); }
-.dwc-tile.is-compact { height: 64px; }
 
-.dwc-tile-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; }
+.dwc-tile-icon { display: flex; align-items: center; justify-content: center; width: var(--dwc-icon-size, 26px); height: var(--dwc-icon-size, 26px); transition: transform 140ms ease; }
 .dwc-glyph { display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
 .dwc-glyph-char { font-family: ${SERIF}; line-height: 1; letter-spacing: 0.01em; color: inherit; }
 .dwc-glyph-svg svg { width: 100%; height: 100%; display: block; }
@@ -470,19 +696,26 @@ window.__ModuleLoader__.load({
   color: var(--dsw-alias-label-caption);
 }
 .dwc-tile:hover .dwc-tile-name, .dwc-tile.is-current .dwc-tile-name { color: var(--dsw-alias-label-secondary); }
-
-.dwc-tile.dwc-add {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-caption);
+/* 名称「仅悬停」：不占排版，悬停时浮在卡片底部；圆角越大，站位越往里收 */
+.dwc-tile.is-names-hover .dwc-tile-name-wrap {
+  position: absolute;
+  left: var(--dwc-name-inset, 6px);
+  right: var(--dwc-name-inset, 6px);
+  bottom: var(--dwc-name-bottom, 5px);
+  width: auto;
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
-.dwc-tile.dwc-add:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2); transform: none; }
-.dwc-add-name { font-size: 10px; }
+.dwc-tile.is-names-hover:hover .dwc-tile-name-wrap,
+.dwc-tile.is-names-hover:focus-visible .dwc-tile-name-wrap { opacity: 1; }
+/* 图标过大时，悬停上移让位给名称，再放不下才等比缩小（数值由 cardMetrics 算好） */
+.dwc-tile.is-names-hover:hover .dwc-tile-icon,
+.dwc-tile.is-names-hover:focus-visible .dwc-tile-icon { transform: translateY(var(--dwc-hover-icon-lift, 0px)) scale(var(--dwc-hover-icon-scale, 1)); }
 
-.dwc-badge { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; }
+.dwc-badge { position: absolute; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
 .dwc-badge[data-kind="pending"] { background: var(--dsw-alias-state-warn-primary); }
 .dwc-badge[data-kind="running"] { background: var(--dsw-alias-state-business-primary); animation: dwc-pulse 1.7s ease-in-out infinite; }
-.dwc-badge[data-kind="done"] { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dsw-alias-state-success-secondary); }
+.dwc-badge[data-kind="done"] { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dsw-alias-state-success-secondary), 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
 @keyframes dwc-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.78); } }
 
 /* ── 展开后的卡片 ── */
@@ -742,6 +975,35 @@ window.__ModuleLoader__.load({
 }
 .dwc-textarea:focus { border-color: var(--dsw-alias-state-business-primary); }
 
+.dwc-svg-actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.dwc-svg-actions .dwc-btn { flex: 1; min-width: 0; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dwc-file {
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dwc-file-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.dwc-file-label { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+.dwc-file-path { display: flex; flex-direction: column; gap: 1px; font-size: 10px; line-height: 1.45; color: var(--dsw-alias-label-caption); font-family: ui-monospace, "Cascadia Mono", "Microsoft YaHei", monospace; }
+.dwc-file-dir, .dwc-file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dwc-file-name { color: var(--dsw-alias-label-secondary); }
+.dwc-file-note { font-size: 10px; line-height: 1.45; color: var(--dsw-alias-label-caption); }
+.dwc-file-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.dwc-file-btn {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.dwc-file-btn:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .dwc-hint { font-size: 11px; color: var(--dsw-alias-label-caption); }
 .dwc-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .dwc-btn {
@@ -777,6 +1039,42 @@ window.__ModuleLoader__.load({
   cursor: pointer;
 }
 .dwc-rail button.is-current { color: var(--dsw-alias-label-primary); box-shadow: inset 0 0 0 1.5px var(--dsw-alias-state-business-primary); }
+
+/* ── 设置页（DSH 设置 → 工作区卡片） ── */
+.dwc-set { display: flex; flex-direction: column; gap: 14px; }
+.dwc-set-head { display: flex; align-items: baseline; gap: 10px; }
+.dwc-set-title { font-size: 17px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dwc-set-sub { font-size: 12px; color: var(--dsw-alias-label-caption); }
+.dwc-set-group { border: 1px solid var(--dsw-alias-border-l1); border-radius: 14px; padding: 4px 16px; background: var(--dsw-alias-bg-layer-1); }
+.dwc-set-group + .dwc-set-group { margin-top: 2px; }
+.dwc-set-group-title { padding: 10px 0 0; font-size: 12px; color: var(--dsw-alias-label-caption); }
+.dwc-set-hint { padding: 4px 0 8px; font-size: 11px; line-height: 1.5; color: var(--dsw-alias-label-caption); }
+.dwc-set-row { display: flex; align-items: center; gap: 16px; min-height: 44px; }
+.dwc-set-row + .dwc-set-row { border-top: 1px solid var(--dsw-alias-border-l1); }
+.dwc-set-label { flex: 0 0 84px; font-size: 13px; color: var(--dsw-alias-label-secondary); }
+.dwc-set-control { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
+.dwc-set-range { flex: 1; min-width: 0; height: 20px; margin: 0; accent-color: var(--dsw-alias-state-business-primary); cursor: pointer; }
+.dwc-set-value { flex: 0 0 46px; text-align: right; font-size: 12px; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
+.dwc-set-chips { display: flex; gap: 6px; }
+.dwc-set-chip {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.dwc-set-chip:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dwc-set-chip.is-on { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
+.dwc-set-preview { flex: 1; display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; min-width: 0; }
+.dwc-set-preview .dwc-tile { flex: 0 0 auto; width: var(--dwc-card-size, 76px); cursor: default; }
+.dwc-set-foot { display: flex; justify-content: flex-end; }
+.dwc-set-btn { height: 30px; padding: 0 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.dwc-set-btn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 
 @media (prefers-reduced-motion: reduce) {
   .dwc-grid, .dwc-sr, .dwc-badge[data-kind="running"], .dwc-dot[data-kind="running"] i { animation: none; }
@@ -906,12 +1204,22 @@ window.__ModuleLoader__.load({
     /* ────────────────────────── 图标编辑 ────────────────────────── */
 
     function IconScreen(props) {
-      const { spec, t, onSaveIcon, onClear, onBack } = props;
-      const [tab, setTab] = useState(spec && spec.kind ? spec.kind : 'char');
+      const { spec, ws, t, fileIcon, iconDir, onRefresh, onSaveIcon, onClear, onBack } = props;
+      const title = (ws && ws.title) || props.title || '';
+      const hasFile = !!fileIcon;
+      const [tab, setTab] = useState(spec && spec.kind ? spec.kind : (hasFile ? 'svg' : 'char'));
       const [char, setChar] = useState(spec && spec.kind === 'char' ? spec.value : '');
       const [lib, setLib] = useState(spec && spec.kind === 'lib' ? spec.value : '');
       const [svg, setSvg] = useState(spec && spec.kind === 'svg' ? spec.value : '');
+      const [copied, setCopied] = useState(false);
       const fileRef = useRef(null);
+      const copyTimer = useRef(0);
+      const fileId = ws && ws.workspaceId ? String(ws.workspaceId) : '';
+      const fileName = fileId ? fileId + '.svg' : '';
+      const filePath = iconPathOf(iconDir, fileId);
+      const fileSpec = hasFile ? { kind: 'svg', value: fileIcon } : null;
+
+      useEffect(() => () => clearTimeout(copyTimer.current), []);
 
       const draft = tab === 'char'
         ? { kind: 'char', value: Array.from(char.trim())[0] || '' }
@@ -924,9 +1232,46 @@ window.__ModuleLoader__.load({
         : draft.kind === 'lib'
           ? (draft.value ? draft : null)
           : (draft.value.trim() ? draft : null);
+      /* 没有本地自定义时，预览直接显示文件图标；有本地自定义时以本地为准。 */
+      const shown = preview || (!spec && fileSpec ? fileSpec : null);
+
+      const copyPrompt = async () => {
+        if (!iconDir || !ws) return;
+        const ok = await copyText(agentPromptOf(ws, filePath));
+        if (!ok) return;
+        setCopied(true);
+        clearTimeout(copyTimer.current);
+        copyTimer.current = setTimeout(() => setCopied(false), 1600);
+      };
 
       return h('div', { className: 'dwc-pane' },
-        h('div', { className: 'dwc-preview' }, h(IconNode, { spec: preview, size: 44, title: props.title })),
+        h('div', { className: 'dwc-preview' }, h(IconNode, { spec: shown, size: 44, title })),
+
+        hasFile ? h('div', { className: 'dwc-file' },
+          h('div', { className: 'dwc-file-head' },
+            h('span', { className: 'dwc-file-label' }, t('fileIcon')),
+            h('button', {
+              type: 'button',
+              className: 'dwc-file-btn',
+              onClick: () => { if (typeof onRefresh === 'function') onRefresh(); },
+            }, t('fileIconRefresh'))),
+          h('div', { className: 'dwc-file-path', title: filePath },
+            h('span', { className: 'dwc-file-dir' }, iconDir || '…'),
+            h('span', { className: 'dwc-file-name' }, fileName || '…')),
+          h('div', { className: 'dwc-file-note' }, spec ? t('fileIconOverridden') : t('fileIconNow')),
+          h('div', { className: 'dwc-file-actions' },
+            h('button', {
+              type: 'button',
+              className: 'dwc-file-btn',
+              onClick: () => { setSvg(fileIcon); setTab('svg'); },
+            }, t('fileIconLoad')),
+            spec ? h('button', {
+              type: 'button',
+              className: 'dwc-file-btn',
+              onClick: () => { onClear(); onBack(); },
+            }, t('fileIconUse')) : null),
+          h('div', { className: 'dwc-file-note' }, t('fileIconManaged'))) : null,
+
         h('div', { className: 'dwc-seg' },
           h('button', { type: 'button', className: tab === 'char' ? 'is-on' : '', onClick: () => setTab('char') }, t('iconChar')),
           h('button', { type: 'button', className: tab === 'lib' ? 'is-on' : '', onClick: () => setTab('lib') }, t('iconLib')),
@@ -958,8 +1303,15 @@ window.__ModuleLoader__.load({
             placeholder: '<svg viewBox="0 0 24 24">…</svg>',
             onChange: (event) => setSvg(event.target.value),
           }),
-          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 } },
+          h('div', { className: 'dwc-svg-actions' },
             h('button', { type: 'button', className: 'dwc-btn', onClick: () => fileRef.current && fileRef.current.click() }, t('pickFile')),
+            h('button', {
+              type: 'button',
+              className: 'dwc-btn',
+              disabled: !iconDir || !ws,
+              title: iconDir ? '' : t('fileIconNoDir'),
+              onClick: copyPrompt,
+            }, copied ? t('agentCopied') : t('agentDraw')),
             h('input', {
               ref: fileRef,
               type: 'file',
@@ -973,10 +1325,12 @@ window.__ModuleLoader__.load({
                 reader.readAsText(file);
                 event.target.value = '';
               },
-            }))) : null,
+            })),
+          !hasFile ? h('div', { className: 'dwc-hint', style: { marginTop: 6, overflowWrap: 'anywhere' } },
+            iconDir ? t('fileIconPath', { path: filePath }) : t('fileIconNoDir')) : null) : null,
 
         h('div', { className: 'dwc-actions' },
-          h('button', { type: 'button', className: 'dwc-btn', onClick: () => { onClear(); onBack(); } }, t('clear')),
+          spec ? h('button', { type: 'button', className: 'dwc-btn', onClick: () => { onClear(); onBack(); } }, hasFile ? t('clearLocal') : t('clear')) : null,
           h('button', { type: 'button', className: 'dwc-btn is-primary', disabled: !preview, onClick: () => { if (preview) onSaveIcon(preview); onBack(); } }, t('apply'))));
     }
 
@@ -1011,6 +1365,106 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'dwc-btn is-danger', onClick: onDelete }, t('delete'))));
     }
 
+    /* ────────────────────────── 设置页 ────────────────────────── */
+
+    function SettingsScreen(props) {
+      const t = props.t || ((key) => key);
+      const hub = props.store || storeHub;
+      const [state, setState] = useState(() => hub.get());
+
+      useEffect(() => hub.subscribe(setState), [hub]);
+
+      const set = (patch) => hub.set(patch);
+
+      const sliderRow = (key, label, limit) => h('div', { className: 'dwc-set-row', key },
+        h('span', { className: 'dwc-set-label' }, label),
+        h('div', { className: 'dwc-set-control' },
+          h('input', {
+            className: 'dwc-set-range',
+            type: 'range',
+            min: limit.min,
+            max: limit.max,
+            step: limit.step,
+            value: state[key],
+            'aria-label': label,
+            onChange: (event) => set({ [key]: Number(event.target.value) }),
+          }),
+          h('span', { className: 'dwc-set-value' }, state[key] + (limit.unit || ''))));
+
+      const chipRow = (key, label, options) => h('div', { className: 'dwc-set-row', key },
+        h('span', { className: 'dwc-set-label' }, label),
+        h('div', { className: 'dwc-set-control' },
+          h('div', { className: 'dwc-set-chips' }, options.map((option) => h('button', {
+            key: String(option.value),
+            type: 'button',
+            className: 'dwc-set-chip' + (state[key] === option.value ? ' is-on' : ''),
+            'aria-pressed': state[key] === option.value,
+            onClick: () => set({ [key]: option.value }),
+          }, option.label)))));
+
+      const previewMetrics = cardMetrics(state);
+      const preview = h('div', {
+        className: 'dwc-set-preview',
+        style: {
+          '--dwc-card-size': state.cardSize + 'px',
+          '--dwc-card-radius': state.radius + '%',
+          '--dwc-icon-size': state.iconSize + 'px',
+          '--dwc-name-bottom': previewMetrics.nameBottom + 'px',
+          '--dwc-name-inset': previewMetrics.nameInset + 'px',
+          '--dwc-badge-inset': previewMetrics.badgeInset + 'px',
+          '--dwc-hover-icon-scale': String(previewMetrics.hoverScale),
+          '--dwc-hover-icon-lift': previewMetrics.hoverLift + 'px',
+        },
+      }, ['dt', 'wr', 'ga'].map((glyph, index) => h('div', {
+        key: glyph,
+        className: 'dwc-tile' + (state.showNames ? '' : ' is-names-hover'),
+        'aria-hidden': 'true',
+      },
+      h('span', { className: 'dwc-tile-icon' },
+        h('span', {
+          className: 'dwc-glyph dwc-glyph-char',
+          style: { width: state.iconSize + 'px', height: state.iconSize + 'px', fontSize: Math.round(state.iconSize * 0.62) + 'px' },
+        }, glyph)),
+      h('span', { className: 'dwc-tile-name-wrap' },
+        h('span', { className: 'dwc-tile-name' }, ['dsh-theme', 'writemyway', 'gaotie'][index])))));
+
+      return h('div', { className: 'dwc-set' },
+        h('div', { className: 'dwc-set-head' },
+          h('span', { className: 'dwc-set-title' }, t('settingsTitle')),
+          h('span', { className: 'dwc-set-sub' }, t('settingsSub'))),
+        h('div', { className: 'dwc-set-group' },
+          h('div', { className: 'dwc-set-group-title' }, t('settingsLayout')),
+          h('div', { className: 'dwc-set-hint' }, t('settingsLayoutHint')),
+          sliderRow('cardSize', t('cardSize'), LIMITS.cardSize),
+          sliderRow('radius', t('cardRadius'), LIMITS.radius),
+          sliderRow('iconSize', t('cardIcon'), LIMITS.iconSize),
+          h('div', { className: 'dwc-set-row' },
+            h('span', { className: 'dwc-set-label' }, t('settingsPreview')),
+            preview)),
+        h('div', { className: 'dwc-set-group' },
+          h('div', { className: 'dwc-set-group-title' }, t('settingsDisplay')),
+          chipRow('showNames', t('names'), [
+            { value: true, label: t('namesShow') },
+            { value: false, label: t('namesHide') },
+          ]),
+          chipRow('scrollbars', t('scrollbar'), [
+            { value: 'show', label: t('scrollbarShow') },
+            { value: 'hide', label: t('scrollbarHide') },
+          ])),
+        h('div', { className: 'dwc-set-foot' },
+          h('button', {
+            type: 'button',
+            className: 'dwc-set-btn',
+            onClick: () => set({
+              cardSize: LIMITS.cardSize.def,
+              radius: LIMITS.radius.def,
+              iconSize: LIMITS.iconSize.def,
+              showNames: DEFAULT_STORE.showNames,
+              scrollbars: DEFAULT_STORE.scrollbars,
+            }),
+          }, t('settingsReset'))));
+    }
+
     /* ────────────────────────── 根组件 ────────────────────────── */
 
     function WorkspaceCards(props) {
@@ -1034,7 +1488,10 @@ window.__ModuleLoader__.load({
       const byId = sessionSnap.byId || {};
       const archived = useMemo(() => toSet(wsnap.archivedSessionIds), [wsnap.archivedSessionIds]);
 
-      const [store, setStoreState] = useState(readStore);
+      const [store, setStoreState] = useState(() => storeHub.get());
+      const [fileIcons, setFileIcons] = useState({});
+      const [iconDir, setIconDir] = useState('');
+      const [iconRouteDown, setIconRouteDown] = useState(false);
       const [expanded, setExpanded] = useState(null);
       const [panelOpen, setPanelOpen] = useState(false);
       const [panelMode, setPanelMode] = useState('sessions');
@@ -1053,13 +1510,58 @@ window.__ModuleLoader__.load({
       const panelRef = useRef(null);
       const closingRef = useRef(false);
 
+      useEffect(() => storeHub.subscribe(setStoreState), []);
+
       const patchStore = useCallback((patch) => {
-        setStoreState((prev) => {
-          const next = { ...prev, ...patch };
-          writeStore(next);
-          return next;
-        });
+        storeHub.set(patch);
       }, []);
+
+      /* 文件图标由 Host 半读目录；Host 没装/没重启时静默保持本地图标。 */
+      const loadFileIcons = useCallback(async () => {
+        try {
+          const response = await fetch(ICON_ROUTE, { cache: 'no-store', credentials: 'same-origin' });
+          if (!response.ok) {
+            setIconRouteDown(true);
+            return;
+          }
+          setIconRouteDown(false);
+          const data = await response.json();
+          if (data && typeof data.dir === 'string' && data.dir) {
+            setIconDir((prev) => (prev === data.dir ? prev : data.dir));
+          }
+          if (data && data.icons && typeof data.icons === 'object') {
+            const next = data.icons;
+            setFileIcons((prev) => {
+              const keys = Object.keys(next);
+              if (keys.length === Object.keys(prev).length && keys.every((key) => prev[key] === next[key])) return prev;
+              return next;
+            });
+          }
+        } catch (error) {
+          /* 路由不可用：不提示，继续用本地自定义 */
+        }
+      }, []);
+
+      const iconSpecOf = (workspaceId) => store.icons[workspaceId]
+        || (fileIcons[workspaceId] ? { kind: 'svg', value: fileIcons[workspaceId] } : null);
+
+      useEffect(() => { loadFileIcons(); }, [loadFileIcons]);
+
+      useEffect(() => {
+        if (panelMode !== 'icon') return undefined;
+        loadFileIcons();
+        const timer = setInterval(loadFileIcons, iconRouteDown ? 10000 : ICON_POLL_MS);
+        return () => clearInterval(timer);
+      }, [panelMode, loadFileIcons, iconRouteDown]);
+
+      /* 图标页关着时也慢速轮询：agent 存完，网格不刷新也能自己变。 */
+      useEffect(() => {
+        if (panelMode === 'icon') return undefined;
+        const timer = setInterval(() => {
+          if (typeof document !== 'undefined' && document.visibilityState === 'visible') loadFileIcons();
+        }, iconRouteDown ? 15000 : 5000);
+        return () => clearInterval(timer);
+      }, [panelMode, loadFileIcons, iconRouteDown]);
 
       useEffect(() => {
         if (!toast) return undefined;
@@ -1408,10 +1910,6 @@ window.__ModuleLoader__.load({
         setMenu({
           anchor,
           render: (close) => h(React.Fragment, null,
-            group(t('names'), [
-              { key: 'show', label: t('namesShow'), checked: store.showNames, onClick: () => { close(); patchStore({ showNames: true }); } },
-              { key: 'hide', label: t('namesHide'), checked: !store.showNames, onClick: () => { close(); patchStore({ showNames: false }); } },
-            ]),
             group(t('sort'), [
               { key: 'manual', label: t('sortManual'), checked: store.sort === 'manual', onClick: () => { close(); patchStore({ sort: 'manual' }); } },
               { key: 'recent', label: t('sortRecent'), checked: store.sort === 'recent', onClick: () => { close(); patchStore({ sort: 'recent' }); } },
@@ -1498,10 +1996,9 @@ window.__ModuleLoader__.load({
             'data-ws-id': ws.workspaceId,
             className: 'dwc-tile'
               + (card.current ? ' is-current' : '')
-              + (store.showNames ? '' : ' is-compact')
+              + (store.showNames ? '' : ' is-names-hover')
               + (dragId === ws.workspaceId ? ' is-dragging' : '')
               + (dropId === ws.workspaceId ? ' is-drop' : ''),
-            title: store.showNames ? undefined : ws.title,
             'aria-label': ws.title + (ws.path ? ' · ' + ws.path : ''),
             onMouseEnter: () => setHoverTile(ws.workspaceId),
             onMouseLeave: () => setHoverTile((current) => (current === ws.workspaceId ? null : current)),
@@ -1530,21 +2027,11 @@ window.__ModuleLoader__.load({
             onDragEnd: () => { setDragId(null); setDropId(null); },
           },
           h('span', { className: 'dwc-tile-icon' },
-            h(IconNode, { spec: store.icons[ws.workspaceId], size: 26, title: ws.title, glyph: monos[cardIndex] })),
-          store.showNames ? h('span', { className: 'dwc-tile-name-wrap' },
-            h(ScrollingText, { className: 'dwc-tile-name', text: ws.title, active: hoverTile === ws.workspaceId })) : null,
+            h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: store.iconSize, title: ws.title, glyph: monos[cardIndex] })),
+          h('span', { className: 'dwc-tile-name-wrap' },
+            h(ScrollingText, { className: 'dwc-tile-name', text: ws.title, active: hoverTile === ws.workspaceId })),
           card.badge ? h('i', { className: 'dwc-badge', 'data-kind': card.badge }) : null);
         });
-
-        tiles.push(h('button', {
-          key: '__add',
-          type: 'button',
-          className: 'dwc-tile dwc-add',
-          title: t('add'),
-          onClick: addWorkspace,
-        },
-        h('span', { className: 'dwc-tile-icon' }, h(Icon, { name: 'add', size: 18 })),
-        store.showNames ? h('span', { className: 'dwc-tile-name dwc-add-name' }, t('addHint')) : null));
 
         return h('div', { className: 'dwc-grid', role: 'grid', 'aria-label': t('workspaces'), onKeyDown: moveFocus, 'aria-hidden': expanded ? 'true' : undefined }, tiles);
       }
@@ -1555,7 +2042,11 @@ window.__ModuleLoader__.load({
         if (panelMode === 'icon') {
           return h(IconScreen, {
             spec: store.icons[ws.workspaceId],
+            ws,
             title: ws.title,
+            fileIcon: fileIcons[ws.workspaceId] || '',
+            iconDir,
+            onRefresh: loadFileIcons,
             t,
             onBack: () => setPanelMode('sessions'),
             onSaveIcon: (spec) => {
@@ -1651,7 +2142,7 @@ window.__ModuleLoader__.load({
             if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); collapse(); }
           },
         },
-        h('span', { className: 'dwc-panel-head-icon' }, h(IconNode, { spec: store.icons[ws.workspaceId], size: 18, title: ws.title })),
+        h('span', { className: 'dwc-panel-head-icon' }, h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: 18, title: ws.title })),
         h(ScrollingText, { className: 'dwc-panel-name', text: ws.title }),
         h('span', { className: 'dwc-panel-actions' },
           h('button', {
@@ -1717,12 +2208,25 @@ window.__ModuleLoader__.load({
                 if (typeof props.expandSidebar === 'function') props.expandSidebar();
               },
             },
-            h(IconNode, { spec: store.icons[ws.workspaceId], size: 20, title: ws.title, glyph: monos[index] }),
+            h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: 20, title: ws.title, glyph: monos[index] }),
             badge ? h('i', { className: 'dwc-badge', 'data-kind': badge }) : null);
           }));
       }
 
-      return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail'), ref: rootRef },
+      /* 卡片尺寸 / 圆角 / 图标大小走 CSS 变量，设置页改 store 即时生效 */
+      const metrics = cardMetrics(store);
+      const rootStyle = {
+        '--dwc-card-size': store.cardSize + 'px',
+        '--dwc-card-radius': store.radius + '%',
+        '--dwc-icon-size': store.iconSize + 'px',
+        '--dwc-name-bottom': metrics.nameBottom + 'px',
+        '--dwc-name-inset': metrics.nameInset + 'px',
+        '--dwc-badge-inset': metrics.badgeInset + 'px',
+        '--dwc-hover-icon-scale': String(metrics.hoverScale),
+        '--dwc-hover-icon-lift': metrics.hoverLift + 'px',
+      };
+
+      return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail') + (store.scrollbars === 'hide' ? ' dwc-nobars' : ''), style: rootStyle, ref: rootRef },
         wide ? headerNode() : null,
         wide
           ? h('div', { className: 'dwc-stage', ref: stageRef },
@@ -1815,6 +2319,15 @@ window.__ModuleLoader__.load({
           priority: -1,
           inject: () => ({ api }),
         }, WorkspaceCards)), 'workspace-cards: slot');
+
+        /* 设置 → 「工作区卡片」：卡片尺寸 / 圆角 / 图标 / 名称 / 滚动条。 */
+        ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
+          name: 'settings.section',
+          id: PLUGIN_ID,
+          order: 50,
+          label: () => translate('settingsTitle'),
+          inject: () => ({ t: translate, store: storeHub }),
+        }, SettingsScreen)), 'workspace-cards: settings section');
       },
     };
   },

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DSH 侧栏工作区卡片：图标网格，点卡片原地展开会话面板",
+  "description": "DSH 侧栏工作区卡片：正方形图标网格，尺寸 / 圆角 / 图标在设置里调，点卡片原地展开会话面板",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -27,7 +27,9 @@
       "immediately": true,
       "inject": [
         "@deepseek-ai/dsh-client-ui-sidebar",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general"
       ]
     }
   },
