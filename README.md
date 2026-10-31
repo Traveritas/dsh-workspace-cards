@@ -31,6 +31,70 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**；点
 - **搜索**：标题 + 工作区名本地匹配，另接 `ctx.sessions.search` 做内容搜索（250ms 防抖）。
 - **窄栏**：侧栏折叠时退化成单列图标。
 
+## 样式接口（皮肤插件用）
+
+> 从 0.2.0 起。下面这些是**承诺**；其它类名和 DOM 层级算内部实现，皮肤别依赖。
+
+**门控**：插件挂上挂 `html[data-dwc-api="1"]` + `html[data-dwc-version="0.2.0"]`，卸载时一起摘掉。
+皮肤的规则统一用 `html[data-dwc-api="1"]` 开头——基座没装、或将来接口不兼容，整段皮肤不生效，不会半残。
+
+**DOM**
+
+```
+.dwc-grid                     网格容器
+  .dwc-tile[data-ws-id]       卡片（button）
+    .dwc-tile-paint           空绘制层：皮肤在这画动态底 / 纹理
+    .dwc-tile-icon            图标
+    .dwc-tile-name-wrap       名称
+      .dwc-tile-name
+    .dwc-badge[data-kind]     角标，kind：pending / running / done
+.dwc-panel                    展开的面板
+  .dwc-panel-paint            空绘制层
+  .dwc-panel-inner
+```
+
+状态类：`is-current`（当前工作区）、`is-names-hover`（名称仅悬停）、`is-dragging`、`is-drop`；另有 `:hover` / `:focus-visible`。
+
+**涂装变量**：基座只把变量写进 `var()` 的兜底位，不直接写死值；皮肤在任意祖先上赋值就生效。
+
+| 作用域 | 变量 | 默认 |
+| --- | --- | --- |
+| 卡片 | `--dwc-tile-bg` / `--dwc-tile-bg-hover` | `bg-layer-2` / `bg-layer-1` |
+| 卡片 | `--dwc-tile-ring` / `--dwc-tile-ring-hover` / `--dwc-tile-ring-current` | 1px 内描边 / 1px 描边 + 投影 / 1.5px 主题色 |
+| 卡片 | `--dwc-tile-label` / `-hover` / `-current`、`--dwc-focus-ring` | 次级文字 / 主文字 / 主题色 |
+| 角标 | `--dwc-badge-ring` / `-hover`、`--dwc-badge-size` | 跟随卡片底色 / 7px |
+| 角标 | `--dwc-badge-pending` / `-running` / `-done` | warn / business / success |
+| 名称 | `--dwc-name-label` / `-hover`、`--dwc-name-font`、`--dwc-glyph-font` | caption / secondary / 继承 / 衬线栈 |
+| 网格 | `--dwc-grid-gap`、`--dwc-grid-bg` | 8px / transparent |
+| 面板 | `--dwc-panel-bg`、`--dwc-panel-bg-image`、`--dwc-panel-ring`、`--dwc-panel-shadow` | bg-base / 叠一层 bg-layer-1 / 1px 描边 / shadow-lv2 |
+
+`--dwc-card-size` / `--dwc-card-radius` / `--dwc-icon-size` 归设置页，皮肤别改（会和滑块打架）。
+
+**级联约定**：基座只用单类选择器、不用 `!important`。皮肤加 `html[data-dwc-api="1"]` 前缀就稳定压过，
+**不依赖两个插件谁先加载**。别用 `@layer`——宿主 CSS 未分层，进层的普通声明会被宿主压掉。
+
+**画动态底**：给 `.dwc-tile-paint` 写背景和动画即可。它绝对定位、`pointer-events: none`、继承卡片圆角；
+内容层在它上面（图标 `z-index: 1`、角标 `2`），不会盖住文字。用不透明绘制层时，
+把 `--dwc-badge-ring` / `-hover` 设成绘制层边缘色，角标描边才切得干净。
+
+```css
+html[data-dwc-api="1"] {
+  --dwc-tile-bg: #fff;
+  --dwc-badge-ring: #fff;
+  --dwc-badge-ring-hover: #fff;
+  --dwc-name-font: "Songti SC", serif;
+}
+html[data-dwc-api="1"] .dwc-tile-paint {
+  background: conic-gradient(from 0deg, #b98ce622, #7cc7e822, #61567d22, #b98ce622);
+  background-size: 200% 200%;
+  animation: skin-drift 6s ease-in-out infinite alternate;
+}
+@keyframes skin-drift { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-dwc-api="1"] .dwc-tile-paint { animation: none; }
+}
+```
+
 ## 存储
 
 浏览器 `localStorage` 键 `dsh.workspaceCards.v1`：

@@ -16,6 +16,9 @@ window.__ModuleLoader__.load({
     }
 
     const PLUGIN_ID = 'dsh-workspace-cards';
+    /* 样式接口版本：皮肤插件用 html[data-dwc-api] 门控，接口不兼容时整段不生效 */
+    const PLUGIN_VERSION = '0.2.0';
+    const SKIN_API = '1';
     const STORE_KEY = 'dsh.workspaceCards.v1';
     /* v1 → v2：名称默认改「仅悬停」；v2 → v3：圆角从像素改成占边长的百分比。 */
     const STORE_VERSION = 3;
@@ -637,9 +640,10 @@ window.__ModuleLoader__.load({
   display: grid;
   grid-template-columns: repeat(auto-fill, var(--dwc-card-size, 76px));
   justify-content: center;
-  gap: 8px;
+  gap: var(--dwc-grid-gap, 8px);
   align-content: start;
   padding: 4px 2px 16px;
+  background: var(--dwc-grid-bg, transparent);
 }
 .dwc-grid, .dwc-sr, .dwc-panel-body { animation: dwc-in 160ms ease both; }
 .dwc-grid[aria-hidden="true"] { pointer-events: none; }
@@ -659,43 +663,57 @@ window.__ModuleLoader__.load({
   /* 应用默认是 superellipse 圆角；卡片这里用正圆，50% 才是真正的整圆 */
   corner-shape: round;
   border-radius: var(--dwc-card-radius, 21%);
-  background: var(--dsw-alias-bg-layer-2);
-  /* 卡片当前底色：角标描边用这个色，压在图标上也能切出干净的边 */
-  --dwc-tile-fill: var(--dsw-alias-bg-layer-2);
-  box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1);
-  color: var(--dsw-alias-label-secondary);
+  background: var(--dwc-tile-bg, var(--dsw-alias-bg-layer-2));
+  /* 角标描边要跟卡片底同色；皮肤画了不透明底时，把 --dwc-badge-ring(-hover) 设成同一色 */
+  --dwc-tile-fill: var(--dwc-badge-ring, var(--dsw-alias-bg-layer-2));
+  box-shadow: var(--dwc-tile-ring, inset 0 0 0 1px var(--dsw-alias-border-l1));
+  color: var(--dwc-tile-label, var(--dsw-alias-label-secondary));
   cursor: pointer;
   overflow: hidden;
+  isolation: isolate;
   transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease, border-radius 180ms ease;
 }
 .dwc-tile:hover {
   transform: translateY(-1px);
-  background: var(--dsw-alias-bg-layer-1);
-  --dwc-tile-fill: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2), var(--dsw-shadow-lv1);
+  background: var(--dwc-tile-bg-hover, var(--dsw-alias-bg-layer-1));
+  --dwc-tile-fill: var(--dwc-badge-ring-hover, var(--dsw-alias-bg-layer-1));
+  color: var(--dwc-tile-label-hover, var(--dsw-alias-label-primary));
+  box-shadow: var(--dwc-tile-ring-hover, inset 0 0 0 1px var(--dsw-alias-border-l2), var(--dsw-shadow-lv1));
 }
-.dwc-tile:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 1px; }
+.dwc-tile:focus-visible { outline: 2px solid var(--dwc-focus-ring, var(--dsw-alias-state-business-primary)); outline-offset: 1px; }
 .dwc-tile.is-current {
-  color: var(--dsw-alias-label-primary);
-  box-shadow: inset 0 0 0 1.5px var(--dsw-alias-state-business-primary);
+  color: var(--dwc-tile-label-current, var(--dsw-alias-label-primary));
+  box-shadow: var(--dwc-tile-ring-current, inset 0 0 0 1.5px var(--dsw-alias-state-business-primary));
 }
 .dwc-tile.is-dragging { opacity: 0.45; }
-.dwc-tile.is-drop { box-shadow: inset 0 0 0 1.5px var(--dsw-alias-state-business-primary); }
+.dwc-tile.is-drop { box-shadow: var(--dwc-tile-ring-current, inset 0 0 0 1.5px var(--dsw-alias-state-business-primary)); }
 
-.dwc-tile-icon { display: flex; align-items: center; justify-content: center; width: var(--dwc-icon-size, 26px); height: var(--dwc-icon-size, 26px); transition: transform 140ms ease; }
+/* 皮肤绘制层：基座只留空位，不写背景；皮肤在这上面画动态底 / 纹理 / 光效 */
+.dwc-tile-paint,
+.dwc-panel-paint {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.dwc-tile-paint { overflow: hidden; }
+
+.dwc-tile-icon { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: var(--dwc-icon-size, 26px); height: var(--dwc-icon-size, 26px); transition: transform 140ms ease; }
 .dwc-glyph { display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
-.dwc-glyph-char { font-family: ${SERIF}; line-height: 1; letter-spacing: 0.01em; color: inherit; }
+.dwc-glyph-char { font-family: var(--dwc-glyph-font, ${SERIF}); line-height: 1; letter-spacing: 0.01em; color: inherit; }
 .dwc-glyph-svg svg { width: 100%; height: 100%; display: block; }
 .dwc-glyph-svg { color: inherit; }
-.dwc-tile-name-wrap { display: flex; justify-content: center; width: 100%; min-width: 0; }
+.dwc-tile-name-wrap { position: relative; z-index: 1; display: flex; justify-content: center; width: 100%; min-width: 0; }
 .dwc-tile-name {
   max-width: 100%;
   font-size: 10px;
+  font-family: var(--dwc-name-font, inherit);
   line-height: 1.15;
-  color: var(--dsw-alias-label-caption);
+  color: var(--dwc-name-label, var(--dsw-alias-label-caption));
 }
-.dwc-tile:hover .dwc-tile-name, .dwc-tile.is-current .dwc-tile-name { color: var(--dsw-alias-label-secondary); }
+.dwc-tile:hover .dwc-tile-name, .dwc-tile.is-current .dwc-tile-name { color: var(--dwc-name-label-hover, var(--dsw-alias-label-secondary)); }
 /* 名称「仅悬停」：不占排版，悬停时浮在卡片底部；圆角越大，站位越往里收 */
 .dwc-tile.is-names-hover .dwc-tile-name-wrap {
   position: absolute;
@@ -712,10 +730,10 @@ window.__ModuleLoader__.load({
 .dwc-tile.is-names-hover:hover .dwc-tile-icon,
 .dwc-tile.is-names-hover:focus-visible .dwc-tile-icon { transform: translateY(var(--dwc-hover-icon-lift, 0px)) scale(var(--dwc-hover-icon-scale, 1)); }
 
-.dwc-badge { position: absolute; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
-.dwc-badge[data-kind="pending"] { background: var(--dsw-alias-state-warn-primary); }
-.dwc-badge[data-kind="running"] { background: var(--dsw-alias-state-business-primary); animation: dwc-pulse 1.7s ease-in-out infinite; }
-.dwc-badge[data-kind="done"] { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dsw-alias-state-success-secondary), 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
+.dwc-badge { position: absolute; z-index: 2; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: var(--dwc-badge-size, 7px); height: var(--dwc-badge-size, 7px); border-radius: 50%; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
+.dwc-badge[data-kind="pending"] { background: var(--dwc-badge-pending, var(--dsw-alias-state-warn-primary)); }
+.dwc-badge[data-kind="running"] { background: var(--dwc-badge-running, var(--dsw-alias-state-business-primary)); animation: dwc-pulse 1.7s ease-in-out infinite; }
+.dwc-badge[data-kind="done"] { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dwc-badge-done, var(--dsw-alias-state-success-secondary)), 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
 @keyframes dwc-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.78); } }
 
 /* ── 展开后的卡片 ── */
@@ -726,12 +744,14 @@ window.__ModuleLoader__.load({
   overflow: hidden;
   transform-origin: 0 0;
   border-radius: 20px;
-  background-color: var(--dsw-alias-bg-base);
-  background-image: linear-gradient(var(--dsw-alias-bg-layer-1), var(--dsw-alias-bg-layer-1));
-  border: 1px solid var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-shadow-lv2);
+  background-color: var(--dwc-panel-bg, var(--dsw-alias-bg-base));
+  background-image: var(--dwc-panel-bg-image, linear-gradient(var(--dsw-alias-bg-layer-1), var(--dsw-alias-bg-layer-1)));
+  border: var(--dwc-panel-ring, 1px solid var(--dsw-alias-border-l1));
+  box-shadow: var(--dwc-panel-shadow, var(--dsw-shadow-lv2));
 }
 .dwc-panel-inner {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1420,6 +1440,7 @@ window.__ModuleLoader__.load({
         className: 'dwc-tile' + (state.showNames ? '' : ' is-names-hover'),
         'aria-hidden': 'true',
       },
+      h('span', { className: 'dwc-tile-paint', 'aria-hidden': 'true' }),
       h('span', { className: 'dwc-tile-icon' },
         h('span', {
           className: 'dwc-glyph dwc-glyph-char',
@@ -2026,6 +2047,7 @@ window.__ModuleLoader__.load({
             },
             onDragEnd: () => { setDragId(null); setDropId(null); },
           },
+          h('span', { className: 'dwc-tile-paint', 'aria-hidden': 'true' }),
           h('span', { className: 'dwc-tile-icon' },
             h(IconNode, { spec: iconSpecOf(ws.workspaceId), size: store.iconSize, title: ws.title, glyph: monos[cardIndex] })),
           h('span', { className: 'dwc-tile-name-wrap' },
@@ -2165,6 +2187,7 @@ window.__ModuleLoader__.load({
           role: 'dialog',
           'aria-label': ws.title,
         },
+        h('span', { className: 'dwc-panel-paint', 'aria-hidden': 'true' }),
         h('div', { className: 'dwc-panel-inner' },
           h('div', { className: 'dwc-panel-header' + (panelMode !== 'sessions' ? ' is-static' : '') },
             panelHead(ws),
@@ -2251,6 +2274,17 @@ window.__ModuleLoader__.load({
           document.head.appendChild(tag);
           return () => { tag.remove(); };
         }, 'workspace-cards: stylesheet');
+
+        /* 样式接口标记：皮肤插件只在 data-dwc-api 匹配时生效，卸载或换版都不会半残 */
+        ctx.effect(() => {
+          const root = document.documentElement;
+          root.setAttribute('data-dwc-api', SKIN_API);
+          root.setAttribute('data-dwc-version', PLUGIN_VERSION);
+          return () => {
+            root.removeAttribute('data-dwc-api');
+            root.removeAttribute('data-dwc-version');
+          };
+        }, 'workspace-cards: skin api');
 
         const locale = ctx.get('locale');
         const translate = (key) => {
