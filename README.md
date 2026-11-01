@@ -260,3 +260,6 @@ git clone --depth 1 https://github.com/Traveritas/dsh-workspace-cards.git D:\dsh
 | `cordis.patch.yml` | bundle patch：插入 `workspace-cards` 一行 |
 | `locale/*.json` | 插件管理器的标题 / 描述 |
 | `icon.svg` | 插件管理器图标 |
+
+## 致谢
+[LINUX DO](linux.do)
