@@ -137,7 +137,8 @@ AveritA 的 DSH 侧栏插件：把「工作区」区换成**图标网格**，当
 
 `--dwc-card-size` / `--dwc-card-radius` / `--dwc-icon-size` 归设置页，皮肤别改（会和滑块打架）。
 设置页把「边框」关掉时，基座在 `.dwc-noborders` 上把 `--dwc-tile-ring` / `--dwc-tile-ring-hover` 设成 `none`，
-皮肤自己的描边也会一起消失；`--dwc-tile-ring-current`（当前工作区高亮）不受影响。
+不自己赋这两档的皮肤（描边全走基座变量）会跟着一起消失；皮肤若在卡片自己身上另写了这两档，会盖过这句 `none`。
+`--dwc-tile-ring-current`（当前工作区高亮）不受影响。
 
 **级联约定**：基座只用单类选择器、不用 `!important`。皮肤加 `html[data-dwc-api="1"]` 前缀就稳定压过，
 **不依赖两个插件谁先加载**。别用 `@layer`——宿主 CSS 未分层，进层的普通声明会被宿主压掉。
