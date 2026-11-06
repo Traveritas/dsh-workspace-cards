@@ -1,6 +1,6 @@
 {
   "name": "dsh-workspace-cards",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "DSH 侧栏工作区卡片：正方形图标网格，当前工作区常驻在网格上方；右上角视图选项可切两种视口——工作区优先（卡片常驻、会话浮窗）/ 会话栏优先（会话铺满、卡片收进底部把手）；尺寸 / 圆角 / 图标在设置里调",
