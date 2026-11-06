@@ -76,6 +76,8 @@ window.__ModuleLoader__.load({
       archiveOnly: '仅显示已归档',
       untitled: '未命名',
       emptyWorkspace: '还没有会话',
+      emptyStage: '还没有工作区',
+      emptyStageHint: '把一个文件夹加成工作区，会话就会按工作区分在这里。',
       noMatch: '没有匹配的会话',
       searchPlaceholder: '搜索会话名称',
       iconTitle: '设置图标',
@@ -162,6 +164,8 @@ window.__ModuleLoader__.load({
       archiveOnly: 'Archived only',
       untitled: 'Untitled',
       emptyWorkspace: 'No sessions yet',
+      emptyStage: 'No workspaces yet',
+      emptyStageHint: 'Add a folder as a workspace; sessions are grouped under it.',
       noMatch: 'No matching sessions',
       searchPlaceholder: 'Search session titles',
       iconTitle: 'Workspace icon',
@@ -1108,6 +1112,21 @@ window.__ModuleLoader__.load({
 }
 .dwc-empty-icon { opacity: 0.7; }
 
+/* 一个工作区都没有：舞台的空态（头部 ＋ 仍在，这里给更显眼的入口） */
+.dwc-empty-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 16px 48px;
+  text-align: center;
+}
+.dwc-empty-stage-icon { color: var(--dsw-alias-label-tertiary); opacity: 0.8; margin-bottom: 2px; }
+.dwc-empty-stage-title { font-size: 13px; color: var(--dsw-alias-label-secondary); }
+.dwc-empty-stage-hint { font-size: 11px; line-height: 1.6; color: var(--dsw-alias-label-caption); margin-bottom: 6px; }
+
 .dwc-sr { position: absolute; inset: 0; overflow-y: auto; padding: 2px 2px 12px; display: flex; flex-direction: column; gap: 2px; }
 .dwc-sr-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; text-align: left; width: 100%; }
 .dwc-sr-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -1940,7 +1959,15 @@ window.__ModuleLoader__.load({
       /* 谁在上面：只要还认得出这个工作区就挂着（收起来也要留着，动效才有得放）；
          pinnedWs 才是「现在开着」，收起后为 null */
       const pinnedTarget = pinnedId ? wsById.get(pinnedId) || null : null;
-      const pinnedWs = panelOpen ? pinnedTarget : null;
+
+      /* 会话栏优先里舞台只有「常驻面板 + 底部按钮」两样东西，都挂在当前工作区上：
+         删掉工作区、会话又全归档之后 pinnedId 一路落空（焦点 / 当前会话 / 上一个都没了），
+         舞台会变成一整块白板。这里退到排序第一张卡兜底，至少还有个会话栏可看、有按钮可点。 */
+      const fallbackTarget = focus ? (cards.length ? cards[0].ws : items.length ? items[0] : null) : null;
+      const stageTarget = pinnedTarget || fallbackTarget;
+      const pinnedWs = panelOpen ? stageTarget : null;
+      /* 一个工作区都没有：舞台给空态，别留白板 */
+      const emptyWorkspaces = !items.length;
 
       /* 面板骨架要一直挂着，展开才有得动画；会话列表不必——
          收起动画跑完（160ms）再卸载，常驻 DOM 就只剩标题行那几个节点 */
@@ -2571,7 +2598,7 @@ window.__ModuleLoader__.load({
       /* ── 会话栏优先：底部那条按钮，只负责开合卡片抽屉，不拖高度 ── */
 
       function handleNode() {
-        if (!pinnedTarget) return null;
+        if (!stageTarget) return null;
         return h('div', {
           className: 'dwc-split dwc-handle',
           role: 'button',
@@ -2611,8 +2638,10 @@ window.__ModuleLoader__.load({
       }
 
       function panelNode() {
-        if (!pinnedTarget) return null;
-        const ws = pinnedTarget;
+        /* 只有会话栏优先会走到兜底：此时 stageTarget 一定有值（见 fallbackTarget），
+           pinnedTarget 为 null 意味着"借"了排序第一张卡来撑住舞台 */
+        if (!stageTarget) return null;
+        const ws = stageTarget;
 
         return h('div', {
           className: 'dwc-panel',
@@ -2623,6 +2652,16 @@ window.__ModuleLoader__.load({
         h('div', { className: 'dwc-panel-inner' },
           h('div', { className: 'dwc-panel-header is-static' }, panelHead(ws)),
           bodyAlive ? panelBody(ws) : null));
+      }
+
+      /* ── 一个工作区都没有：舞台给空态（头部 ＋ 照样在，这里再给一个更显眼的入口） ── */
+
+      function emptyStageNode() {
+        return h('div', { className: 'dwc-empty-stage' },
+          h('span', { className: 'dwc-empty-stage-icon' }, h(Icon, { name: 'addFolder', size: 28 })),
+          h('span', { className: 'dwc-empty-stage-title' }, t('emptyStage')),
+          h('span', { className: 'dwc-empty-stage-hint' }, t('emptyStageHint')),
+          h('button', { type: 'button', className: 'dwc-btn is-primary', onClick: addWorkspace }, t('add')));
       }
 
       /* ── 搜索 ── */
@@ -2687,15 +2726,18 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dwc-root' + (wide ? '' : ' is-rail') + (store.scrollbars === 'hide' ? ' dwc-nobars' : '') + (store.borders === 'hide' ? ' dwc-noborders' : '') + (splitDrag ? ' is-splitting' : '')
           + (focus ? ' is-focus' : '')
           + (viewSwitch ? ' is-view-switch' : '')
-          + (pinnedTarget && !panelOpen ? ' is-panel-closed' : ''), style: rootStyle, ref: rootRef },
+          + (pinnedTarget && !panelOpen ? ' is-panel-closed' : '')
+          + (emptyWorkspaces ? ' is-empty' : ''), style: rootStyle, ref: rootRef },
         wide ? headerNode() : null,
         wide
           ? h('div', { className: 'dwc-stage', ref: stageRef },
-            searchOpen ? searchNode() : h(React.Fragment, null,
-              panelNode(),
-              focus ? handleNode() : splitterNode(),
-              focus ? null : gridNode(),
-              focus && (drawer || drawerClosing) ? drawerNode() : null))
+            searchOpen ? searchNode()
+              : emptyWorkspaces ? emptyStageNode()
+                : h(React.Fragment, null,
+                  panelNode(),
+                  focus ? handleNode() : splitterNode(),
+                  focus ? null : gridNode(),
+                  focus && (drawer || drawerClosing) ? drawerNode() : null))
           : railNode(),
         toast ? h('div', { className: 'dwc-toast', role: 'status' }, toast) : null,
         menu ? h(React.Fragment, null,
