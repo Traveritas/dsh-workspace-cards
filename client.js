@@ -968,7 +968,10 @@ window.__ModuleLoader__.load({
 
 .dwc-badge[data-kind="pending"] { background: var(--dwc-badge-pending, var(--dsw-alias-state-warn-primary)); }
 .dwc-badge[data-kind="running"] { background: var(--dwc-badge-running, var(--dsw-alias-state-business-primary)); animation: dwc-pulse 1.7s ease-in-out infinite; }
-.dwc-badge[data-kind="done"] { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dwc-badge-done, var(--dsw-alias-state-success-secondary)), 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
+/* done 是空心环：环一律用 border 画，不能用 inset box-shadow——box-shadow 不吃
+   corner-shape，外轮廓永远是宿主那条 superellipse(1.5)，环会画成圆角方。
+   外面那圈 2px 是同色遮罩（盖住卡片底纹），形状看不出来，继续用 box-shadow。 */
+.dwc-badge[data-kind="done"] { background: transparent; border: 1.4px solid var(--dwc-badge-done, var(--dsw-alias-state-success-secondary)); box-sizing: border-box; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
 @keyframes dwc-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.78); } }
 
 /* ── 常驻卡片：当前工作区钉在网格上方，高度固定，会话超出内部滚动 ── */
@@ -1099,7 +1102,7 @@ window.__ModuleLoader__.load({
 .dwc-dot i { display: block; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; }
 .dwc-dot[data-kind="pending"] i { background: var(--dsw-alias-state-warn-primary); }
 .dwc-dot[data-kind="running"] i { background: var(--dsw-alias-state-business-primary); animation: dwc-pulse 1.7s ease-in-out infinite; }
-.dwc-dot[data-kind="done"] i { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dsw-alias-state-success-secondary); }
+.dwc-dot[data-kind="done"] i { background: transparent; border: 1.4px solid var(--dsw-alias-state-success-secondary); box-sizing: border-box; }
 .dwc-dot[data-kind="idle"] i { display: none; }
 
 .dwc-row-new { color: var(--dsw-alias-state-business-primary); }
