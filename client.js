@@ -733,6 +733,9 @@ window.__ModuleLoader__.load({
 
 .dwc-tile {
   position: relative;
+  /* 侧栏的 * 重置会给 border-box，设置页预览那一层没有；显式写死，
+     否则 6px/4px 的内边距加在外面，预览卡会变成 84×88 的非方卡 */
+  box-sizing: border-box;
   width: 100%;
   height: var(--dwc-card-size, 76px);
   padding: 6px 4px;
@@ -833,7 +836,7 @@ window.__ModuleLoader__.load({
 .dwc-tile.is-names-hover:hover .dwc-tile-icon,
 .dwc-tile.is-names-hover:focus-visible .dwc-tile-icon { transform: translateY(var(--dwc-hover-icon-lift, 0px)) scale(var(--dwc-hover-icon-scale, 1)); }
 
-.dwc-badge { position: absolute; z-index: 3; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: var(--dwc-badge-size, 7px); height: var(--dwc-badge-size, 7px); border-radius: 50%; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
+.dwc-badge { position: absolute; z-index: 3; top: var(--dwc-badge-inset, 8px); right: var(--dwc-badge-inset, 8px); width: var(--dwc-badge-size, 7px); height: var(--dwc-badge-size, 7px); border-radius: 50%; corner-shape: round; box-shadow: 0 0 0 2px var(--dwc-tile-fill, var(--dsw-alias-bg-layer-2)); }
 .dwc-tile.is-pinned { transform: scale(var(--dwc-pinned-scale, 0.86)); }
 .dwc-tile.is-pinned:hover { transform: scale(var(--dwc-pinned-scale, 0.86)) translateY(-1px); }
 
@@ -1046,6 +1049,10 @@ window.__ModuleLoader__.load({
   z-index: 2;
   flex: 0 0 auto;
   border-radius: var(--dwc-panel-radius, 16px) var(--dwc-panel-radius, 16px) 0 0;
+  /* 面板本身是 corner-shape: round，这层的上圆角必须跟着，否则皮肤给页头铺底时
+     两个角的形状对不上（宿主全局是 superellipse(1.5)，而 .dwc-panel-inner 这层
+     只是 DOM 包裹、不写形状，inherit 会继承到 squircle，所以这里写死 round） */
+  corner-shape: round;
 }
 .dwc-panel-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 2px 6px 12px; }
 
@@ -1089,7 +1096,7 @@ window.__ModuleLoader__.load({
 .dwc-row-more:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 
 .dwc-dot { flex: 0 0 auto; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
-.dwc-dot i { display: block; width: 7px; height: 7px; border-radius: 50%; }
+.dwc-dot i { display: block; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; }
 .dwc-dot[data-kind="pending"] i { background: var(--dsw-alias-state-warn-primary); }
 .dwc-dot[data-kind="running"] i { background: var(--dsw-alias-state-business-primary); animation: dwc-pulse 1.7s ease-in-out infinite; }
 .dwc-dot[data-kind="done"] i { background: transparent; box-shadow: inset 0 0 0 1.4px var(--dsw-alias-state-success-secondary); }
